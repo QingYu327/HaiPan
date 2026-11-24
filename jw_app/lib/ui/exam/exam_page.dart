@@ -197,6 +197,8 @@ class _ExamCard extends StatelessWidget {
         ),
       if (exam.ksmc.isNotEmpty)
         _infoRow(context, AppIcons.verified, '考试类型', exam.ksmc),
+      if (exam.ksfs.isNotEmpty)
+        _infoRow(context, AppIcons.method, '考试方式', exam.ksfs),
     ];
 
     final ended = days != null && days < 0;
@@ -225,16 +227,8 @@ class _ExamCard extends StatelessWidget {
                 _CountdownBadge(days: days),
               ],
             ),
-            // 考试方式是决定带什么进考场的关键信息，单独做成高亮条
-            if (exam.ksfs.isNotEmpty) ...[
-              const SizedBox(height: InkSpacing.m),
-              _MethodBanner(method: exam.ksfs),
-            ],
             if (rows.isNotEmpty) ...[
-              if (exam.ksfs.isEmpty)
-                const SizedBox(height: InkSpacing.m)
-              else
-                const SizedBox(height: InkSpacing.s),
+              const SizedBox(height: InkSpacing.m),
               ...rows,
             ],
           ],
@@ -271,52 +265,6 @@ class _ExamCard extends StatelessWidget {
                   style: context.tsBodyStrong.copyWith(
                     color: context.scheme.onSurface,
                   ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 考试方式高亮条：整卡最醒目的信息，避免漏看闭卷/开卷/机考。
-class _MethodBanner extends StatelessWidget {
-  const _MethodBanner({required this.method});
-
-  final String method;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = context.scheme.primary;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: InkSpacing.m,
-        vertical: InkSpacing.s + 2,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(InkRadius.control),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        children: [
-          Icon(AppIcons.method, size: 20, color: color),
-          const SizedBox(width: InkSpacing.s),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '考试方式',
-                  style: context.tsCaption.copyWith(color: color),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  method,
-                  style: context.tsBodyStrong.copyWith(color: color),
                 ),
               ],
             ),

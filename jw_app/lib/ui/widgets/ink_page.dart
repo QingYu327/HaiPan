@@ -97,16 +97,31 @@ class InkPageScaffold extends StatelessWidget {
             ),
       bottomNavigationBar: bottom == null
           ? null
-          : SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  InkSpacing.l,
-                  InkSpacing.s,
-                  InkSpacing.l,
-                  InkSpacing.l,
+          : DecoratedBox(
+              // 底部操作条铺满屏宽并压到手势条，避免透出背景纹理显得零碎
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(
+                  context.ink.cardFill,
+                  context.scheme.surface,
                 ),
-                child: bottom,
+                border: Border(
+                  top: BorderSide(
+                    color: context.ink.hairline,
+                    width: InkStroke.hairline,
+                  ),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    InkSpacing.l,
+                    InkSpacing.s,
+                    InkSpacing.l,
+                    InkSpacing.l,
+                  ),
+                  child: bottom,
+                ),
               ),
             ),
     );

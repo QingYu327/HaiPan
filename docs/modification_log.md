@@ -11,6 +11,23 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-24 · Batch46：考试信息等权显示；更新页底部操作条；反馈日志纳入清理（build 4098）
+
+### 1. 改动
+- `lib/ui/exam/exam_page.dart`：移除「考试方式」高亮条，改为与时间/地点/类型相同的「图标 + 标签 + 加粗值」行，四项信息等权；仍不展示教学地点。
+- `lib/ui/widgets/ink_page.dart`：`InkPageScaffold` 的底部操作条改为全宽实底 + 顶部 hairline，铺到手势条，不再透出背景纹理；更新页「下载并安装 / 已是最新版」使用该底栏。
+- `lib/util/app_log.dart`：`clear()` 同时删除私有目录下 `haipan-feedback-*.txt`。
+- `lib/ui/profile/storage_page.dart`：反馈导出文件计入「日志」分类，随「清除日志」一起清理。
+
+### 2. 验证
+- `flutter analyze` 无问题；`flutter test` 3/3；arm64 4098 构建完成，模拟器 x64 4099 验证：考试卡四项同级、无教学地点；更新页底栏为整宽实底。
+- 加速镜像实测：`https://v6.gh-proxy.org/<release apk>` 返回 200、Content-Length 23934865，与源文件一致。
+- GitHub Release 资产替换为 4098。
+
+### 3. 说明
+- 反馈日志位于 `/data/data/cn.gdou.xiuhong/files/haipan-feedback-<时间>.txt`，每次导出只保留最新一份，卸载应用即消失；现在也可在「设置 → 本地占用 → 日志 → 清除日志」删除。
+- 真机 `d4b532b4` 在构建期间断开，4098 尚未推装。
+
 ## 2026-11-24 · Batch45：考试卡片重构；管理开关卡片间距；NAS 部署（build 4097）
 
 ### 1. 原因

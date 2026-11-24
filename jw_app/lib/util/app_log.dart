@@ -186,5 +186,17 @@ class AppLog {
     try {
       if (_file != null) await _file!.writeAsString('', flush: true);
     } catch (_) {}
+    // 一并删除反馈导出的附件，避免「清除日志」后私有目录里仍残留
+    try {
+      final dir = await getApplicationSupportDirectory();
+      for (final f in dir.listSync()) {
+        final name = f.path.split(Platform.pathSeparator).last;
+        if (f is File && name.startsWith('haipan-feedback-')) {
+          try {
+            await f.delete();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 }

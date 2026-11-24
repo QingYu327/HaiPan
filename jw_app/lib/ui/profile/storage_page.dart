@@ -51,7 +51,10 @@ class _StoragePageState extends ConsumerState<StoragePage> {
           final len = await f.length();
           fileTotal += len;
           final name = f.path.split(Platform.pathSeparator).last;
-          if (name.toLowerCase().endsWith('.log')) logBytes += len;
+          if (name.toLowerCase().endsWith('.log') ||
+              name.startsWith('haipan-feedback-')) {
+            logBytes += len;
+          }
           if (name == 'cookies') cookieBytes += len;
         }
       }
