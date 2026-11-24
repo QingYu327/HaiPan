@@ -2,10 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 当前应用版本（与 pubspec.yaml version 保持一致）
-const appVersion = '1.0.0';
+const appVersion = '1.0.1';
 
-/// GitHub 发布仓库（owner/repo）
-const githubRepo = 'QingYu327/GDOU-APP';
+/// GitHub 发布仓库（owner/repo）：公开仓库只放文档与主要源码，APK 走 Release
+const githubRepo = 'QingYu327/HaiPan';
 
 /// GitHub 加速镜像前缀（默认使用；下载失败时回退直连）
 const defaultGhMirror = 'https://v6.gh-proxy.org/';

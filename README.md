@@ -7,6 +7,8 @@
 
 课表 / 成绩 / 考试 / 学业进度 / 绩点排名 / 空闲教室 / 选课抢课 / 上课与考试提醒 / 桌面小组件。
 
+安装包只在 [Releases](https://github.com/QingYu327/HaiPan/releases) 提供，源码仓库不含 APK。
+
 ## 技术栈
 
 - 客户端：Flutter + Riverpod，Dio + PersistCookieJar，Android Keystore 设备密钥

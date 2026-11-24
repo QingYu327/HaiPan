@@ -11,6 +11,26 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-24 · Batch43：更新检查切换到新仓库 HaiPan，发布 v1.0.1（build 4095）
+
+### 1. 原因
+- 仓库重建为公开的 `QingYu327/HaiPan`（文档 + 主要源码），旧 `GDOU-APP` 不再作为发布源；更新页仍读取旧仓库 Release，会导致新版本无法下发。
+
+### 2. 改动
+- `lib/api/update_api.dart`：`githubRepo` 改为 `QingYu327/HaiPan`；`appVersion` 升至 `1.0.1`。
+- `pubspec.yaml`：`version: 1.0.1+1`。
+- 新仓库创建 Release `v1.0.1`（标题「海畔 v1.0.1」），上传构建产物 `haipan-app-release.apk`；更新页取 Release 中第一个 `.apk` 资产，文件名可任意，但**每次发版必须提升 version 并建同 tag 的 Release**。
+
+### 3. 验证
+- `flutter analyze` 无问题；`flutter test` 3/3。
+- arm64 构建 4095 → `C:\Users\Lime\Desktop\海畔_4095.apk`（22.6MB）。
+- `GET /repos/QingYu327/HaiPan/releases/latest` → tag `v1.0.1`，asset `haipan-app-release.apk`（23.7MB）。
+- 旧版 1.0.0 客户端会判定 1.0.1 为新版本并显示下载；1.0.1 自身显示「已是最新」。
+
+### 4. 后续
+- 发版流程：改 `appVersion`/`pubspec version` → 构建 → 在 HaiPan 建 `vX.Y.Z` Release 并上传 APK。
+- 公开仓库只保留文档与主要源码，APK 仅放 Release，不再入库。
+
 ## 2026-11-24 · Batch42：自查高优先级修复（设备换绑保护 / 退出登录冷启动 / 学期回退上限）（build 4094）
 
 ### 1. 原因
@@ -803,7 +823,7 @@
 - 复测：本机 Node 起服务跑完整流程（注册/挑战/验签/gates/权限/一次性挑战/管理端），11 项全部通过。
 
 ### 飞牛主机部署记录
-- 主机：`192.168.1.10`，用户 `admin`，系统 Debian 12 + Docker Compose v2.40.3。
+- 主机：`192.168.1.10`，用户 `lime`，系统 Debian 12 + Docker Compose v2.40.3。
 - 目录：`/path/to/haipan-api`（`data/` 为持久化卷，容器内 `node` uid 1000 可写）。
 - 端口：宿主机 **18080** → 容器 8080，避开已有服务的 8080。
 - Dockerfile 基础镜像改为 `docker.m.daocloud.io/library/node:20-alpine`：飞牛默认镜像源 `docker.fnnas.com` 对 Docker Hub 返回 401。
