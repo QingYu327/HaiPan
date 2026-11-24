@@ -187,21 +187,16 @@ class _ExamCard extends StatelessWidget {
     final days = exam.daysLeft;
     final rows = <Widget>[
       if (exam.kssj.isNotEmpty)
-        _row(context, AppIcons.time, '考试时间：${exam.kssj}', highlight: true),
-      if (exam.ksmc.isNotEmpty)
-        _row(context, AppIcons.verified, '考试类型：${exam.ksmc}', highlight: true),
+        _infoRow(context, AppIcons.time, '考试时间', exam.kssj),
       if (exam.cdmc.isNotEmpty || exam.cdxqmc.isNotEmpty)
-        _row(
+        _infoRow(
           context,
           AppIcons.location,
-          '考试地点：'
-          '${[exam.cdxqmc, exam.cdmc].where((s) => s.isNotEmpty).join(' · ')}',
-          highlight: true,
+          '考试地点',
+          [exam.cdxqmc, exam.cdmc].where((s) => s.isNotEmpty).join(' · '),
         ),
-      if (exam.jxdd.isNotEmpty)
-        _row(context, AppIcons.seat, '教学地点：${exam.jxdd}', highlight: true),
-      if (exam.ksfs.isNotEmpty)
-        _row(context, AppIcons.method, '考试方式：${exam.ksfs}'),
+      if (exam.ksmc.isNotEmpty)
+        _infoRow(context, AppIcons.verified, '考试类型', exam.ksmc),
     ];
 
     final ended = days != null && days < 0;
@@ -230,14 +225,16 @@ class _ExamCard extends StatelessWidget {
                 _CountdownBadge(days: days),
               ],
             ),
+            // 考试方式是决定带什么进考场的关键信息，单独做成高亮条
+            if (exam.ksfs.isNotEmpty) ...[
+              const SizedBox(height: InkSpacing.m),
+              _MethodBanner(method: exam.ksfs),
+            ],
             if (rows.isNotEmpty) ...[
-              const SizedBox(height: InkSpacing.s),
-              Divider(
-                height: 1,
-                thickness: InkStroke.hairline,
-                color: context.ink.hairline,
-              ),
-              const SizedBox(height: InkSpacing.s),
+              if (exam.ksfs.isEmpty)
+                const SizedBox(height: InkSpacing.m)
+              else
+                const SizedBox(height: InkSpacing.s),
               ...rows,
             ],
           ],
@@ -246,33 +243,82 @@ class _ExamCard extends StatelessWidget {
     );
   }
 
-  Widget _row(
+  /// 标签小字 + 加粗值：时间/地点/类型共用，保证多行值对齐。
+  Widget _infoRow(
     BuildContext context,
     IconData icon,
-    String text, {
-    bool highlight = false,
-  }) {
+    String label,
+    String value,
+  ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(top: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 16,
-            color: highlight
-                ? context.scheme.primary
-                : context.ink.secondaryLabel,
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(icon, size: 18, color: context.scheme.primary),
           ),
           const SizedBox(width: InkSpacing.s),
           Expanded(
-            child: Text(
-              text,
-              style: highlight
-                  ? context.tsBodyStrong.copyWith(color: context.scheme.onSurface)
-                  : context.tsBody.copyWith(
-                      color: context.scheme.onSurfaceVariant,
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: context.tsCaption),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: context.tsBodyStrong.copyWith(
+                    color: context.scheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 考试方式高亮条：整卡最醒目的信息，避免漏看闭卷/开卷/机考。
+class _MethodBanner extends StatelessWidget {
+  const _MethodBanner({required this.method});
+
+  final String method;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = context.scheme.primary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: InkSpacing.m,
+        vertical: InkSpacing.s + 2,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(InkRadius.control),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Icon(AppIcons.method, size: 20, color: color),
+          const SizedBox(width: InkSpacing.s),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '考试方式',
+                  style: context.tsCaption.copyWith(color: color),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  method,
+                  style: context.tsBodyStrong.copyWith(color: color),
+                ),
+              ],
             ),
           ),
         ],

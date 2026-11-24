@@ -258,6 +258,7 @@ class _RebindSwitchState extends State<_RebindSwitch> {
   @override
   Widget build(BuildContext context) {
     return InkCard(
+      margin: const EdgeInsets.only(bottom: InkSpacing.m),
       child: Row(
         children: [
           Expanded(

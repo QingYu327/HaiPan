@@ -11,6 +11,31 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-24 · Batch45：考试卡片重构；管理开关卡片间距；NAS 部署（build 4097）
+
+### 1. 原因
+- 考试卡仍展示「教学地点」（与考试地点易混淆且无实际用途）；「考试方式」是关键信息却和普通正文同级，不够醒目。
+- 「设备自动换绑」卡片直接插入列表，缺少与相邻卡片一致的间距。
+- 本地 `backend/server.js` 的 `/settings` 与换绑逻辑尚未部署到 NAS，管理页开关会读取失败。
+
+### 2. 改动
+- `lib/ui/exam/exam_page.dart`
+  - 删除「教学地点」行；标题与倒计时保持不变。
+  - 「考试方式」改为整宽高亮条：primary 8% 底 + 28% 描边 + 图标，标签小字、值加粗，成为卡片第一视觉层级。
+  - 时间/地点/类型改为「图标 + 小字标签 + 加粗值」的三行结构，去掉分隔线与紧凑行距，长文本自动换行对齐；已结束卡片仍整体置灰。
+- `lib/ui/profile/usage_page.dart`：`_RebindSwitch` 卡片补 `margin: bottom InkSpacing.m`，与上下卡片间距一致。
+- `backend/server.js`：同步到 NAS `/path/to/haipan-api/server.js`（先备份 `server.js.bak-before-settings`），`docker compose up -d --build` 重建 `haipan-api`。
+
+### 3. 验证
+- `flutter analyze` 无问题；`flutter test` 3/3；arm64 构建 4097 → `C:\Users\Lime\Desktop\海畔_4097.apk`，已推装真机 `d4b532b4` 并启动无崩溃。
+- 真机 UI dump 确认考试卡只剩「考试方式/考试时间/考试地点/考试类型」，无「教学地点」。
+- NAS：`/health` 200、`/settings` 未授权 401（路由已生效）、TLS 8443 `/health` 200，容器 `Up`。
+- GitHub Release v1.0.1 资产已替换为 4097。
+
+### 4. 备注
+- 现有 `haipan.json` 无 `settings` 字段时按「自动换绑开启」处理，无需迁移。
+- 后续如需关闭自动换绑：管理员 App →「用户统计」→「设备自动换绑」关闭，立即生效并持久化。
+
 ## 2026-11-24 · Batch44：恢复自动换绑并改为管理员开关；更新日志正式排版（build 4096）
 
 ### 1. 原因
