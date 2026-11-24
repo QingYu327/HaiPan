@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 import '../../theme/ink_tokens.dart';
+import '../../util/update_downloader.dart';
 import 'app_icons.dart';
 
 /// 顶部「灵动岛」通知：收起是药丸，点击展开看详情。
@@ -13,6 +14,22 @@ class InkNotice {
   InkNotice._();
 
   static OverlayEntry? _entry;
+  static OverlayEntry? _downloadEntry;
+
+  /// 更新下载进度：顶部灵动岛常驻展示，跨页面可见，终止后自动收起。
+  static void showDownloadIsland(BuildContext context) {
+    if (_downloadEntry != null) return;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+    final entry = OverlayEntry(builder: (_) => const _DownloadIslandNotice());
+    _downloadEntry = entry;
+    overlay.insert(entry);
+  }
+
+  static void removeDownloadIsland() {
+    _downloadEntry?.remove();
+    _downloadEntry = null;
+  }
 
   static void show(
     BuildContext context,
@@ -50,7 +67,157 @@ class InkNotice {
   }
 }
 
-/// 简写入口，语义与 [InkNotice.show] 一致。
+/// 更新下载的常驻灵动岛：黑底药丸 + 百分比 + 底部细进度条。
+/// 跟随 [UpdateDownloader] 状态自动更新，结束后短暂停留再收起。
+class _DownloadIslandNotice extends StatefulWidget {
+  const _DownloadIslandNotice();
+
+  @override
+  State<_DownloadIslandNotice> createState() => _DownloadIslandNoticeState();
+}
+
+class _DownloadIslandNoticeState extends State<_DownloadIslandNotice> {
+  final ValueNotifier<UpdateDownloadState> _state =
+      UpdateDownloader.instance.state;
+  Timer? _hideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _state.addListener(_onState);
+    _onState();
+  }
+
+  void _onState() {
+    final st = _state.value;
+    if (st.status == UpdateDownloadStatus.running) {
+      _hideTimer?.cancel();
+      _hideTimer = null;
+      return;
+    }
+    _hideTimer ??= Timer(const Duration(milliseconds: 1800), () {
+      InkNotice.removeDownloadIsland();
+    });
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    _state.removeListener(_onState);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.paddingOf(context).top + 2,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ValueListenableBuilder<UpdateDownloadState>(
+            valueListenable: _state,
+            builder: (context, st, _) {
+              final running = st.status == UpdateDownloadStatus.running;
+              final success = st.status == UpdateDownloadStatus.success;
+              final pct = st.total > 0
+                  ? (st.progress * 100).toStringAsFixed(0)
+                  : null;
+              final text = switch (st.status) {
+                UpdateDownloadStatus.running =>
+                  pct == null ? '正在连接下载…' : '正在下载 $pct%',
+                UpdateDownloadStatus.success => '下载完成',
+                UpdateDownloadStatus.failed => '下载失败',
+                UpdateDownloadStatus.idle => '下载已取消',
+              };
+              final accent = success
+                  ? InkColors.successDark
+                  : st.status == UpdateDownloadStatus.failed
+                      ? InkColors.dangerDark
+                      : InkColors.infoDark;
+
+              return Container(
+                constraints: BoxConstraints(
+                  minWidth: 168,
+                  maxWidth:
+                      MediaQuery.sizeOf(context).width - InkSpacing.xxl * 2,
+                ),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: const Color(0xF5101A20),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    width: InkStroke.hairline,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 11, 16, 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            success
+                                ? AppIcons.success
+                                : st.status == UpdateDownloadStatus.failed
+                                    ? AppIcons.error
+                                    : AppIcons.download,
+                            size: 15,
+                            color: accent,
+                          ),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              text,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                height: 1.15,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        value: running
+                            ? (st.total > 0 ? st.progress : null)
+                            : 1,
+                        minHeight: 2.5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.10),
+                        color: accent,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 void showInkNotice(
   BuildContext context,
   String message, {

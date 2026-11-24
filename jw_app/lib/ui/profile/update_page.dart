@@ -79,6 +79,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       return;
     }
     AppLog.d('更新', '开始下载 v$version（镜像优先，失败回退直连）');
+    InkNotice.showDownloadIsland(context);
     await UpdateDownloader.instance.start(version, [
       defaultGhMirror + downloadUrl,
       downloadUrl,
@@ -193,45 +194,66 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       valueListenable: UpdateDownloader.instance.state,
       builder: (context, st, _) {
         if (st.active) {
+          // 页面重建（如从后台回来）时确保顶部灵动岛仍在
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) InkNotice.showDownloadIsland(context);
+          });
           final pct = st.total > 0
-              ? (st.progress * 100).toStringAsFixed(0)
-              : null;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _WaveProgressBar(
-                progress: st.progress,
-                color: context.scheme.primary,
-              ),
-              const SizedBox(height: InkSpacing.s),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          pct == null ? '正在连接下载…' : '正在下载 $pct%',
-                          style: context.tsCaption,
+              ? '${(st.progress * 100).toStringAsFixed(0)}%'
+              : '连接中';
+          return InkCard(
+            padding: const EdgeInsets.all(InkSpacing.m),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _WaveProgressBar(
+                  progress: st.progress,
+                  color: context.scheme.primary,
+                ),
+                const SizedBox(height: InkSpacing.s),
+                SizedBox(
+                  height: 48,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // 百分比居中，取消按钮独立贴在右侧
+                      Text(
+                        pct,
+                        style: context.tsBodyStrong.copyWith(
+                          fontSize: 26,
+                          color: context.scheme.primary,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '可退出本页，下载会在后台继续',
-                          style: context.tsCaption.copyWith(
-                            color: context.ink.secondaryLabel,
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.tonal(
+                          onPressed: _cancelDownload,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(0, 36),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(InkRadius.control),
+                            ),
                           ),
+                          child: const Text('取消'),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  TextButton.icon(
-                    onPressed: _cancelDownload,
-                    icon: const Icon(AppIcons.stop, size: 18),
-                    label: const Text('取消'),
+                ),
+                const SizedBox(height: InkSpacing.xs),
+                Text(
+                  '进度已同步到顶部灵动岛',
+                  textAlign: TextAlign.center,
+                  style: context.tsCaption.copyWith(
+                    color: context.ink.secondaryLabel,
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           );
         }
         if (st.status == UpdateDownloadStatus.success) {
@@ -240,7 +262,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
             children: [
               Text(
                 'v${st.version.isEmpty ? version : st.version} 下载完成',
-                style: context.tsCaption,
+                style: context.tsBodyStrong,
               ),
               const SizedBox(height: InkSpacing.s),
               FilledButton.icon(
