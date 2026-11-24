@@ -13,7 +13,7 @@ import '../util/tls_pin.dart';
 class UsageTracker {
   UsageTracker._();
 
-  static const String ownerXh = '202400000000'; // 仅此人可见统计入口
+  static const String ownerXh = '202411413203'; // 仅此人可见统计入口
 
   // 云端受控功能（与 Worker/服务端一致）：
   // 更新用黑名单（update，名单内屏蔽更新）
@@ -330,6 +330,53 @@ class UsageTracker {
     } catch (e) {
       AppLog.e('风控', '名单查询失败：$e');
       return (ok: false, list: const <String>[], error: '$e');
+    }
+  }
+
+  /// 运行设置（仅管理员）：设备自动换绑开关，默认开启。
+  static Future<({bool ok, bool allowRebind, String? error})>
+      fetchSettings() async {
+    try {
+      final r = await _authed('GET', '$_backendUrl/settings', xh: ownerXh);
+      final d = r.data;
+      if (d is Map && d['ok'] == true) {
+        return (
+          ok: true,
+          allowRebind: d['allowRebind'] != false,
+          error: null,
+        );
+      }
+      return (ok: false, allowRebind: true, error: '读取失败');
+    } catch (e) {
+      AppLog.e('设置', '运行设置读取失败：$e');
+      return (ok: false, allowRebind: true, error: '$e');
+    }
+  }
+
+  /// 运行设置（仅管理员）：修改自动换绑开关。
+  static Future<({bool ok, bool allowRebind, String? error})> setAllowRebind(
+    bool allow,
+  ) async {
+    try {
+      final r = await _authed(
+        'POST',
+        '$_backendUrl/settings',
+        xh: ownerXh,
+        data: {'allowRebind': allow},
+      );
+      final d = r.data;
+      if (d is Map && d['ok'] == true) {
+        AppLog.d('设置', '自动换绑 = ${d['allowRebind'] != false}');
+        return (
+          ok: true,
+          allowRebind: d['allowRebind'] != false,
+          error: null,
+        );
+      }
+      return (ok: false, allowRebind: !allow, error: '保存失败');
+    } catch (e) {
+      AppLog.e('设置', '运行设置保存失败：$e');
+      return (ok: false, allowRebind: !allow, error: '$e');
     }
   }
 

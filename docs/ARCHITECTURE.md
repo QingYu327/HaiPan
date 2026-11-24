@@ -141,6 +141,7 @@ App                         云端 /device/register        Keystore
 | GET | `/permission` | 令牌 | 当前账号权限 |
 | GET/POST | `/notes` | 管理员令牌 | 学号备注 |
 | POST | `/perm` | 管理员令牌 | 名单增删、重置设备等 |
+| GET/POST | `/settings` | 管理员令牌 | 运行开关（设备自动换绑，默认开启） |
 | WS | `/tunnel` | 令牌 | 单流隧道转发（回退模式） |
 | WS | `/tunnel-mux` | 令牌 | 多路复用隧道（默认，一条连接承载多条 TCP 流） |
 

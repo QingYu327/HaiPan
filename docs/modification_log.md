@@ -11,6 +11,28 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-24 · Batch44：恢复自动换绑并改为管理员开关；更新日志正式排版（build 4096）
+
+### 1. 原因
+- Batch42 默认关闭自动换绑，虽安全但换机/清数据必须找管理员重置，日常成本高；需在「安全」与「省事」间可切换。
+- 更新页把 Release 的 Markdown 当纯文本显示（`**`、`-`、`#` 原样露出），不像正式更新说明。
+
+### 2. 改动
+- `backend/server.js`：新增 `state.settings`（持久化到 `haipan.json`）；`/device/register` 换绑策略改读 `state.settings.allowRebind`，**默认 true（恢复旧的一键换绑）**，仅当管理员关闭时返回 409 `device_mismatch`。
+- 新增管理接口 `GET/POST /settings`（仅管理员会话）：读取/修改 `allowRebind`，改完立即 `save()`，无需改代码或重启。
+- `lib/api/usage_api.dart`：新增 `fetchSettings()` / `setAllowRebind()`。
+- `lib/ui/profile/usage_page.dart`：用户统计页新增「设备自动换绑」卡片开关，先跟手、失败回滚并提示。
+- `lib/ui/profile/update_page.dart`：更新日志由 `SelectableText` 改为轻量 Markdown 渲染（标题、无序/有序列表、引用、代码块、分隔线、行内加粗/代码/链接文字），不新增依赖；波浪进度条与「镜像优先、失败回退直连」逻辑保持不变。
+- GitHub Release `v1.0.1` 说明重写为「相对 v1.0.0 的新增与改进」，并替换 Release 内 APK 为 4096 构建。
+
+### 3. 验证
+- `flutter analyze` 无问题；`flutter test` 3/3；`node --check backend/server.js` 通过。
+- arm64 构建 4096 → `C:\Users\Lime\Desktop\海畔_4096.apk`（22.8MB）；Release 资产已更新为 4096。
+- 未实测：管理页开关（需先部署新 server.js 并用管理员账号打开用户统计页）、Markdown 渲染视觉效果（可安装 4096 后进更新页查看）。
+
+### 4. 部署
+- NAS 重新 `docker compose up -d --build` 后，`/settings` 才可用；`haipan.json` 无需手工迁移，缺省即开启自动换绑。
+
 ## 2026-11-24 · Batch43：更新检查切换到新仓库 HaiPan，发布 v1.0.1（build 4095）
 
 ### 1. 原因

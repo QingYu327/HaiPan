@@ -306,12 +306,221 @@ class _VersionNotes extends StatelessWidget {
         InkCard(
           child: notes.isEmpty
               ? Text('暂无更新说明', style: context.tsSecondary)
-              : SelectableText(
-                  '$notes\n',
-                  style: context.tsCaption.copyWith(height: 1.6),
-                ),
+              : _ReleaseNotes(notes: notes),
         ),
       ],
+    );
+  }
+}
+
+/// 轻量 Markdown 渲染：标题 / 列表 / 引用 / 代码块 / 行内加粗与代码，
+/// 不引入额外依赖，风格跟随水墨主题。
+class _ReleaseNotes extends StatelessWidget {
+  const _ReleaseNotes({required this.notes});
+
+  final String notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = context.tsCaption.copyWith(height: 1.65);
+    final blocks = <Widget>[];
+    final code = <String>[];
+    var inCode = false;
+
+    void flushCode() {
+      if (code.isEmpty) return;
+      blocks.add(Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: InkSpacing.s),
+        padding: const EdgeInsets.all(InkSpacing.m),
+        decoration: BoxDecoration(
+          color: context.ink.cardFill,
+          borderRadius: BorderRadius.circular(InkRadius.control),
+          border: Border.all(color: context.ink.hairline),
+        ),
+        child: Text(
+          code.join('\n'),
+          style: base.copyWith(
+            fontFamily: 'monospace',
+            height: 1.5,
+            color: context.ink.secondaryLabel,
+          ),
+        ),
+      ));
+      code.clear();
+    }
+
+    for (final raw in notes.split('\n')) {
+      final line = raw.trimRight();
+      if (line.trimLeft().startsWith('```')) {
+        if (inCode) {
+          inCode = false;
+          flushCode();
+        } else {
+          inCode = true;
+        }
+        continue;
+      }
+      if (inCode) {
+        code.add(line);
+        continue;
+      }
+      final text = line.trim();
+      if (text.isEmpty) {
+        if (blocks.isNotEmpty) {
+          blocks.add(const SizedBox(height: InkSpacing.s));
+        }
+        continue;
+      }
+      if (RegExp(r'^-{3,}$').hasMatch(text)) {
+        blocks.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: InkSpacing.s),
+          child: Divider(height: 1, color: context.ink.hairline),
+        ));
+        continue;
+      }
+      final heading = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(text);
+      if (heading != null) {
+        final level = heading.group(1)!.length;
+        blocks.add(Padding(
+          padding: EdgeInsets.only(
+            top: blocks.isEmpty ? 0 : InkSpacing.s,
+            bottom: 4,
+          ),
+          child: _inline(
+            context,
+            heading.group(2)!,
+            context.tsBodyStrong.copyWith(
+              fontSize: level <= 2 ? 17 : 15,
+            ),
+            base,
+          ),
+        ));
+        continue;
+      }
+      final bullet = RegExp(r'^([-*+])\s+(.*)$').firstMatch(text);
+      if (bullet != null) {
+        blocks.add(_NoteRow(
+          marker: '•',
+          child: _inline(context, bullet.group(2)!, base, base),
+        ));
+        continue;
+      }
+      final number = RegExp(r'^(\d+)[.)]\s+(.*)$').firstMatch(text);
+      if (number != null) {
+        blocks.add(_NoteRow(
+          marker: '${number.group(1)}.',
+          child: _inline(context, number.group(2)!, base, base),
+        ));
+        continue;
+      }
+      if (text.startsWith('>')) {
+        blocks.add(Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.fromLTRB(
+            InkSpacing.m,
+            InkSpacing.s,
+            InkSpacing.m,
+            InkSpacing.s,
+          ),
+          decoration: BoxDecoration(
+            color: context.ink.cardFill,
+            border: Border(
+              left: BorderSide(color: context.scheme.primary, width: 2.5),
+            ),
+            borderRadius: BorderRadius.circular(InkRadius.control),
+          ),
+          child: _inline(
+            context,
+            text.replaceFirst(RegExp(r'^>\s?'), ''),
+            base.copyWith(color: context.ink.secondaryLabel),
+            base,
+          ),
+        ));
+        continue;
+      }
+      blocks.add(Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: _inline(context, text, base, base),
+      ));
+    }
+    flushCode();
+
+    return SelectionArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: blocks,
+      ),
+    );
+  }
+
+  /// 行内样式：**加粗**、`代码`、[链接](url)（链接仅显示文字，点击交给系统浏览器有风险，故不跳转）。
+  Widget _inline(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    TextStyle base,
+  ) {
+    final spans = <InlineSpan>[];
+    final pattern = RegExp(r'(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))');
+    var index = 0;
+    for (final m in pattern.allMatches(text)) {
+      if (m.start > index) {
+        spans.add(TextSpan(text: text.substring(index, m.start)));
+      }
+      final token = m.group(0)!;
+      if (token.startsWith('**')) {
+        spans.add(TextSpan(
+          text: token.substring(2, token.length - 2),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ));
+      } else if (token.startsWith('`')) {
+        spans.add(TextSpan(
+          text: token.substring(1, token.length - 1),
+          style: base.copyWith(
+            fontFamily: 'monospace',
+            color: context.ink.secondaryLabel,
+          ),
+        ));
+      } else {
+        final label = RegExp(r'^\[([^\]]+)\]').firstMatch(token)?.group(1);
+        spans.add(TextSpan(
+          text: label ?? token,
+          style: TextStyle(color: context.scheme.primary),
+        ));
+      }
+      index = m.end;
+    }
+    if (index < text.length) {
+      spans.add(TextSpan(text: text.substring(index)));
+    }
+    return Text.rich(TextSpan(style: style, children: spans));
+  }
+}
+
+class _NoteRow extends StatelessWidget {
+  const _NoteRow({required this.marker, required this.child});
+
+  final String marker;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 18,
+            child: Text(
+              marker,
+              style: context.tsCaption.copyWith(height: 1.65),
+            ),
+          ),
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 }

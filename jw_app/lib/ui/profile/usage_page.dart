@@ -152,6 +152,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
                 ),
               ),
               const SizedBox(height: InkSpacing.m),
+              const _RebindSwitch(),
               // 云端名单管理（管理员专属，免发版）：
               // APP 准入（默认禁止） / 更新黑名单
               _PermListSection(
@@ -200,6 +201,93 @@ class _UsagePageState extends ConsumerState<UsagePage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 管理员运行开关：设备自动换绑（默认开启，改完立即下发到云端）。
+class _RebindSwitch extends StatefulWidget {
+  const _RebindSwitch();
+
+  @override
+  State<_RebindSwitch> createState() => _RebindSwitchState();
+}
+
+class _RebindSwitchState extends State<_RebindSwitch> {
+  bool _loading = true;
+  bool _saving = false;
+  bool _enabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final r = await UsageTracker.fetchSettings();
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _enabled = r.allowRebind;
+    });
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _enabled = value; // 先跟手，失败再回滚
+    });
+    final r = await UsageTracker.setAllowRebind(value);
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _enabled = r.ok ? r.allowRebind : !value;
+    });
+    showInkToast(
+      context,
+      r.ok
+          ? (r.allowRebind ? '已开启设备自动换绑' : '已关闭设备自动换绑')
+          : '保存失败：${r.error ?? '请联系管理员检查云端'}',
+      error: !r.ok,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('设备自动换绑', style: context.tsBodyStrong),
+                const SizedBox(height: 2),
+                Text(
+                  _enabled
+                      ? '清数据或换机后自动重新绑定，旧会话立即失效'
+                      : '已关闭：换绑需在下方重置该学号的设备',
+                  style: context.tsCaption,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: InkSpacing.s),
+          if (_loading)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Switch(
+              value: _enabled,
+              onChanged: _saving ? null : _toggle,
+            ),
+        ],
       ),
     );
   }
