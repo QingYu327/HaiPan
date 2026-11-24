@@ -2,12 +2,15 @@ package cn.gdou.xiuhong
 
 import android.Manifest
 import android.app.Activity
+import android.app.DownloadManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -483,6 +486,76 @@ class MainActivity : FlutterActivity() {
                             result.error("INSTALL_ERR", e.message, null)
                         }
                     }
+                    // 用系统 DownloadManager 下载更新包：自带前台进度通知，
+                    // 退出更新页/切后台仍继续，通知进度条也会在状态栏（灵动岛）显示。
+                    "startUpdateDownload" -> {
+                        try {
+                            val url = call.argument<String>("url") ?: ""
+                            val filename = call.argument<String>("filename")
+                                ?: "haipan_update.apk"
+                            val title = call.argument<String>("title") ?: "海畔更新"
+                            val dm = getSystemService(Context.DOWNLOAD_SERVICE)
+                                as DownloadManager
+                            val req = DownloadManager.Request(Uri.parse(url)).apply {
+                                setTitle(title)
+                                setDescription("正在下载更新包，可在后台继续")
+                                setNotificationVisibility(
+                                    DownloadManager.Request
+                                        .VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                setDestinationInExternalFilesDir(
+                                    this@MainActivity,
+                                    Environment.DIRECTORY_DOWNLOADS,
+                                    filename)
+                                setMimeType("application/vnd.android.package-archive")
+                                setAllowedOverMetered(true)
+                                setAllowedOverRoaming(false)
+                            }
+                            result.success(dm.enqueue(req))
+                        } catch (e: Exception) {
+                            result.error("DL_START", e.message, null)
+                        }
+                    }
+                    "queryUpdateDownload" -> {
+                        try {
+                            val id = call.argument<Number>("id")?.toLong() ?: 0L
+                            result.success(queryDownload(id))
+                        } catch (e: Exception) {
+                            result.error("DL_QUERY", e.message, null)
+                        }
+                    }
+                    "cancelUpdateDownload" -> {
+                        try {
+                            val id = call.argument<Number>("id")?.toLong() ?: 0L
+                            val dm = getSystemService(Context.DOWNLOAD_SERVICE)
+                                as DownloadManager
+                            dm.remove(id)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("DL_CANCEL", e.message, null)
+                        }
+                    }
+                    "installDownloaded" -> {
+                        try {
+                            val id = call.argument<Number>("id")?.toLong() ?: 0L
+                            val dm = getSystemService(Context.DOWNLOAD_SERVICE)
+                                as DownloadManager
+                            val uri = dm.getUriForDownloadedFile(id)
+                            if (uri == null) {
+                                result.success(false)
+                            } else {
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(
+                                        uri,
+                                        "application/vnd.android.package-archive")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            }
+                        } catch (e: Exception) {
+                            result.error("DL_INSTALL", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -896,6 +969,26 @@ class MainActivity : FlutterActivity() {
             } catch (_: Exception) {
             }
         }
+    }
+
+    /// 查询系统下载任务：status 与字节进度，页面据此绘制进度并判断完成。
+    private fun queryDownload(id: Long): Map<String, Any?> {
+        if (id <= 0L) return mapOf("status" to -1)
+        val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
+            if (!c.moveToFirst()) return mapOf("status" to -1)
+            fun col(name: String) = c.getColumnIndexOrThrow(name)
+            val status = c.getInt(col(DownloadManager.COLUMN_STATUS))
+            val downloaded = c.getLong(
+                col(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            val total = c.getLong(col(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            return mapOf(
+                "status" to status,
+                "downloaded" to downloaded,
+                "total" to total,
+            )
+        }
+        return mapOf("status" to -1)
     }
 
     companion object {

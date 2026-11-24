@@ -11,6 +11,30 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-25 · Batch47：更新下载改为系统下载；按钮随内容滚动（v1.0.2 / build 4100）
+
+### 1. 原因
+- 更新按钮固定在底栏，用户希望它回到更新日志末尾，随内容滚动。
+- 原下载在页面内用 Dio 执行，退出页面或长时间后台容易中断，且没有系统进度通知。
+
+### 2. 改动
+- `lib/util/update_downloader.dart`（新增）：单例下载状态，交给 Android DownloadManager 执行；支持镜像优先、失败自动回退直连；进度每 600ms 查询；任务 id 持久化，重进页面自动恢复进度与安装入口。
+- `android/.../MainActivity.kt`：新增 `startUpdateDownload / queryUpdateDownload / cancelUpdateDownload / installDownloaded`，使用 `setDestinationInExternalFilesDir` + `VISIBILITY_VISIBLE_NOTIFY_COMPLETED`，通知栏持续显示「海畔 vX / 正在下载更新包」与进度。
+- `lib/ui/profile/update_page.dart`：移除固定底栏，按钮/波浪进度移到更新日志末尾；状态区分下载中、已完成（立即安装）、失败（重新下载）；文案提示可退出页面后台继续。
+- 删除已无引用的 `lib/util/apk_installer.dart`；`appVersion` / pubspec 升至 1.0.2。
+
+### 3. 验证（模拟器 x64 4101，临时以 1.0.1 身份检查 1.0.2）
+- 下载中切 HOME：18% → 37%，后台持续推进。
+- 返回应用进度 37%，退出更新页再进入恢复为 42%。
+- 系统通知标题「海畔 v1.0.2」、正文「正在下载更新包，可在后台继续」。
+- 完成后面板显示「v1.0.2 下载完成 / 立即安装」。
+- `flutter analyze` 无问题；`flutter test` 3/3；arm64 4100 已构建并上传两个仓库的 v1.0.2 Release（sha256 `1aa6328c…`，与本地一致）。
+- 注意：模拟器网络初始为 PARTIAL_CONNECTIVITY，DownloadManager 会一直等待；将网络验证恢复后才开始下载。真机正常联网不受影响。
+
+### 4. 说明
+- 状态栏进度由系统 DownloadManager 提供；是否进入 HyperOS「灵动岛」取决于 ROM 对下载通知的展示策略，通知栏与锁屏一定可见。
+- 1.0.1 用户升级到 1.0.2 仍走旧下载逻辑；装到 1.0.2 后，后续版本才具备后台下载能力。
+
 ## 2026-11-24 · Batch46：考试信息等权显示；更新页底部操作条；反馈日志纳入清理（build 4098）
 
 ### 1. 改动

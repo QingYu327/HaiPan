@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,8 +7,8 @@ import '../../api/update_api.dart';
 import '../../api/usage_api.dart';
 import '../../providers/data_providers.dart';
 import '../../theme/ink_tokens.dart';
-import '../../util/apk_installer.dart';
 import '../../util/app_log.dart';
+import '../../util/update_downloader.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/ink_notice.dart';
 import '../widgets/ink_page.dart';
@@ -27,13 +26,11 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
   String? _error;
   (String, String, String, String)? _result;
 
-  bool _downloading = false;
-  double _progress = 0;
-  CancelToken? _cancelToken;
-
   @override
   void initState() {
     super.initState();
+    // 恢复上次未完成/已完成的下载状态（系统 DownloadManager 仍在后台跑）
+    UpdateDownloader.instance.resume();
     _check();
   }
 
@@ -75,56 +72,29 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
 
   Future<void> _download() async {
     final r = _result;
-    if (r == null || _downloading) return;
+    if (r == null) return;
     final (version, _, _, downloadUrl) = r;
     if (downloadUrl.isEmpty) {
       showInkToast(context, '未找到 APK 下载链接', error: true);
       return;
     }
-    final token = CancelToken();
-    setState(() {
-      _downloading = true;
-      _progress = 0;
-      _cancelToken = token;
-    });
     AppLog.d('更新', '开始下载 v$version（镜像优先，失败回退直连）');
-    try {
-      final candidates = [defaultGhMirror + downloadUrl, downloadUrl];
-      for (final u in candidates) {
-        try {
-          setState(() => _progress = 0);
-          await ApkInstaller.downloadAndInstall(
-              u, '海畔_update_v$version.apk',
-              onProgress: (p) {
-            if (mounted) setState(() => _progress = p);
-          }, cancelToken: token);
-          return; // 下载成功且已拉起系统安装
-        } on DioException catch (e) {
-          if (CancelToken.isCancel(e)) {
-            AppLog.d('更新', '下载已取消');
-            if (mounted) showInkToast(context, '已取消下载');
-            return;
-          }
-          AppLog.w('更新', '$u 下载失败：${e.message}');
-        } catch (e) {
-          AppLog.w('更新', '$u 下载失败：$e');
-        }
-      }
-      AppLog.e('更新', '全部下载源失败');
-      if (mounted) showInkToast(context, '下载失败，请检查网络后重试', error: true);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _downloading = false;
-          _cancelToken = null;
-        });
-      }
-    }
+    await UpdateDownloader.instance.start(version, [
+      defaultGhMirror + downloadUrl,
+      downloadUrl,
+    ]);
   }
 
   /// 取消进行中的下载
   void _cancelDownload() {
-    ApkInstaller.cancel(_cancelToken);
+    UpdateDownloader.instance.cancel();
+  }
+
+  Future<void> _install() async {
+    final ok = await UpdateDownloader.instance.install();
+    if (!ok && mounted) {
+      showInkToast(context, '无法拉起安装器，请从通知栏点击更新包安装', error: true);
+    }
   }
 
   @override
@@ -133,7 +103,6 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
     final ink = context.ink;
 
     Widget content;
-    Widget? bottom;
 
     if (!_done) {
       content = const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
@@ -185,13 +154,13 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           title: '当前已是最新版本',
           versionText: 'v$appVersion',
           notes: r.$2,
-        );
-        bottom = SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: null, // 已是最新，置灰
-            icon: const Icon(AppIcons.success, size: 18),
-            label: const Text('已是最新版'),
+          action: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: null, // 已是最新，置灰
+              icon: const Icon(AppIcons.success, size: 18),
+              label: const Text('已是最新版'),
+            ),
           ),
         );
       } else {
@@ -202,43 +171,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           title: '发现新版本',
           versionText: 'v$appVersion → v$version',
           notes: notes,
+          action: _downloadAction(context, version, downloadUrl),
         );
-        bottom = _downloading
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _WaveProgressBar(
-                    progress: _progress.clamp(0.0, 1.0).toDouble(),
-                    color: cs.primary,
-                  ),
-                  const SizedBox(height: InkSpacing.s),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _progress > 0
-                              ? '正在下载 ${(_progress * 100).toStringAsFixed(0)}%'
-                              : '准备下载…',
-                          style: context.tsCaption,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: _cancelDownload,
-                        icon: const Icon(AppIcons.stop, size: 18),
-                        label: const Text('取消下载'),
-                      ),
-                    ],
-                  ),
-                ],
-              )
-            : SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: downloadUrl.isEmpty ? null : _download,
-                  icon: const Icon(AppIcons.download),
-                  label: const Text('下载并安装'),
-                ),
-              );
       }
     }
 
@@ -246,7 +180,98 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       showBack: true,
       title: '检查更新',
       body: content,
-      bottom: bottom,
+    );
+  }
+
+  /// 按钮/进度放在更新日志最后，随内容一起滚动，不做固定底栏。
+  Widget _downloadAction(
+    BuildContext context,
+    String version,
+    String downloadUrl,
+  ) {
+    return ValueListenableBuilder<UpdateDownloadState>(
+      valueListenable: UpdateDownloader.instance.state,
+      builder: (context, st, _) {
+        if (st.active) {
+          final pct = st.total > 0
+              ? (st.progress * 100).toStringAsFixed(0)
+              : null;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _WaveProgressBar(
+                progress: st.progress,
+                color: context.scheme.primary,
+              ),
+              const SizedBox(height: InkSpacing.s),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pct == null ? '正在连接下载…' : '正在下载 $pct%',
+                          style: context.tsCaption,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '可退出本页，下载会在后台继续',
+                          style: context.tsCaption.copyWith(
+                            color: context.ink.secondaryLabel,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _cancelDownload,
+                    icon: const Icon(AppIcons.stop, size: 18),
+                    label: const Text('取消'),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }
+        if (st.status == UpdateDownloadStatus.success) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'v${st.version.isEmpty ? version : st.version} 下载完成',
+                style: context.tsCaption,
+              ),
+              const SizedBox(height: InkSpacing.s),
+              FilledButton.icon(
+                onPressed: _install,
+                icon: const Icon(AppIcons.success, size: 18),
+                label: const Text('立即安装'),
+              ),
+            ],
+          );
+        }
+        final failed = st.status == UpdateDownloadStatus.failed;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (failed) ...[
+              Text(
+                '下载失败：${st.error ?? '请检查网络后重试'}',
+                style: context.tsCaption.copyWith(
+                  color: inkToneColor(context, InkTone.danger),
+                ),
+              ),
+              const SizedBox(height: InkSpacing.s),
+            ],
+            FilledButton.icon(
+              onPressed: downloadUrl.isEmpty ? null : _download,
+              icon: const Icon(AppIcons.download),
+              label: Text(failed ? '重新下载' : '下载并安装'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -268,6 +293,7 @@ class _VersionNotes extends StatelessWidget {
     required this.title,
     required this.versionText,
     required this.notes,
+    this.action,
   });
 
   final IconData icon;
@@ -275,6 +301,7 @@ class _VersionNotes extends StatelessWidget {
   final String title;
   final String versionText;
   final String notes;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -308,6 +335,10 @@ class _VersionNotes extends StatelessWidget {
               ? Text('暂无更新说明', style: context.tsSecondary)
               : _ReleaseNotes(notes: notes),
         ),
+        if (action != null) ...[
+          const SizedBox(height: InkSpacing.l),
+          action!,
+        ],
       ],
     );
   }

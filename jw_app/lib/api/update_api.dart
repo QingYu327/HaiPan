@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 当前应用版本（与 pubspec.yaml version 保持一致）
-const appVersion = '1.0.1';
+const appVersion = '1.0.2';
 
 /// GitHub 发布仓库（owner/repo）：公开仓库只放文档与主要源码，APK 走 Release
 const githubRepo = 'QingYu327/HaiPan';
