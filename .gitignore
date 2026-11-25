@@ -1,0 +1,55 @@
+# ---- Flutter / Dart ----
+.pub-cache/
+.dart_tool/
+build/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# 本地 Flutter SDK 副本（勿提交）
+/flutter/
+
+# ---- Android ----
+android/.gradle/
+android/local.properties
+android/build/
+android/**/build/
+
+# ---- 敏感数据 / 凭据 ----
+.trae/
+*.log
+
+# ---- IDE / OS ----
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# ---- 脚本 / 依赖 ----
+node_modules/
+
+# ---- 本地工具 / SDK（勿提交）----
+/flutter/
+/edge-cdp-skill/
+
+# ---- 代码生成的图形/临时文件（归档于 design/）----
+/1.png
+/校徽.png
+/Screenshot_*.jpg
+/*.png
+/*.jpg
+/*.jpeg
+**/key.properties
+
+# AOCI agent host integration (machine-bound; do not commit)
+.mcp.json
+.mcp.json.backup.*
+.codex/config.toml
+.codex/config.toml.backup.*
+
+# 临时敏感凭据（仅本机部署用，结项后销毁）
+/.secrets/
+
+# 公开展示仓库的组装目录（独立 git，勿随主仓库提交）
+/dist/

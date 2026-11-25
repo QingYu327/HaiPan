@@ -211,7 +211,7 @@ class ProfilePage extends ConsumerWidget {
   }
 }
 
-/// 头部个人信息卡：头像在左，姓名/学号/班级在右，校徽收尾。
+/// 头部个人信息卡：头像在左，姓名/学号/班级在右，App 图标收尾。
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({required this.student});
 
@@ -287,7 +287,7 @@ class _ProfileHeader extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(InkRadius.control),
             child: Image.asset(
-              'assets/school_logo.png',
+              'assets/app_icon.png',
               width: 56,
               height: 56,
               fit: BoxFit.cover,

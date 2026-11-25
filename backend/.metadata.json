@@ -1,0 +1,7 @@
+{
+  "body_part": "main",
+  "bindings": [
+    { "name": "COUNT", "type": "kv_namespace", "namespace_id": "367902a53d6149299bdf19f0bcb4b364" },
+    { "name": "ALLOW", "type": "kv_namespace", "namespace_id": "367902a53d6149299bdf19f0bcb4b364" }
+  ]
+}

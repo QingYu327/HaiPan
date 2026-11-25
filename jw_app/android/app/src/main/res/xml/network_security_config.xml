@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 统一身份认证服务器仍是 http，仅对这一个域名放行明文；
+     教务与其余域名继续强制 https。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">authserver.gdou.edu.cn</domain>
+    </domain-config>
+</network-security-config>

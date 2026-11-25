@@ -86,7 +86,7 @@
 - 签名：正式版 `jw_app/android/upload-keystore.jks`（RSA2048，CN=XIUHONG）；alias/口令见 gitignore 的 `android/key.properties`（勿外泄，自行备份）以保证后续更新签名一致。
 - 更新下载走 GitHub Release APK，镜像加速 + 直连回退；校验名称 `海畔_update_v<版本>.apk`。
 - 日志系统按模块/页面打标签（tag），支持按关键词过滤 + 按保留天数自动清理；级别分 查看级/调试级。
-- 后端部署：NAS `/path/to/haipan-api`（容器 `haipan-api`，宿主 18080 → 容器 8080，数据卷 `./data`）；管理员由 compose 的 `ADMIN` 环境变量指定。
+- 后端部署：NAS `/vol1/1000/docker/haipan-api`（容器 `haipan-api`，宿主 18080 → 容器 8080，数据卷 `./data`）；管理员由 compose 的 `ADMIN` 环境变量指定。
 - 临时凭据放 `.secrets/`（已 gitignore，结项删除），禁止写入文档/提交记录。
 - 真机 arm64 包不能装进 x86 模拟器；模拟器验证需 `--target-platform android-x64`。
 

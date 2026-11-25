@@ -9,6 +9,18 @@ import '../util/secure_store.dart';
 import '../util/server_config.dart';
 import '../util/tls_pin.dart';
 
+/// 服务端明确拒绝（白名单未放行 / 设备换绑）：属于业务结果，不能当网络错误处理。
+class AccessDeniedException implements Exception {
+  AccessDeniedException(this.code, this.message);
+
+  /// `not_allowed` 或 `device_mismatch`
+  final String code;
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// 使用人数与访问控制（开发者账号可见统计入口）
 class UsageTracker {
   UsageTracker._();
@@ -137,6 +149,8 @@ class UsageTracker {
         AppLog.d('认证', '设备认证成功：$xh');
         return;
       } catch (err) {
+        // 业务拒绝（白名单/换绑）换入口也没用，直接抛给界面
+        if (err is AccessDeniedException) rethrow;
         last = err;
       }
     }
@@ -145,13 +159,46 @@ class UsageTracker {
     throw StateError('设备认证失败');
   }
 
+  /// 从服务端响应里取业务错误码（403 not_allowed / 409 device_mismatch）
+  static AccessDeniedException? _deniedOf(Response<dynamic> r) {
+    final d = r.data;
+    if (d is! Map) return null;
+    final code = '${d['error'] ?? d['code'] ?? ''}';
+    if (code == 'not_allowed') {
+      return AccessDeniedException('not_allowed', '该学号未加入白名单，暂无法登录');
+    }
+    if (code == 'device_mismatch') {
+      return AccessDeniedException(
+          'device_mismatch', '该学号已绑定其他设备，请先在网页登录或联系管理员重置');
+    }
+    return null;
+  }
+
   static Future<void> _authenticateAt(
       String base, String xh, String pub) async {
     // 幂等注册；已注册且公钥一致时服务端返回 200
-    await _plain.post<dynamic>(
-      '$base/device/register',
-      data: {'xh': xh, 'publicKey': pub},
-    );
+    Response<dynamic> reg;
+    try {
+      reg = await _plain.post<dynamic>(
+        '$base/device/register',
+        data: {'xh': xh, 'publicKey': pub},
+      );
+    } on DioException catch (e) {
+      final s = e.response?.statusCode;
+      final denied = e.response == null ? null : _deniedOf(e.response!);
+      if (denied != null) throw denied;
+      if (s == 403) {
+        throw AccessDeniedException('not_allowed', '该学号未加入白名单，暂无法登录');
+      }
+      if (s == 409) {
+        throw AccessDeniedException(
+            'device_mismatch', '该学号已绑定其他设备，请先在网页登录或联系管理员重置');
+      }
+      rethrow;
+    }
+    // 有的入口用 200 + error 字段表示拒绝
+    final denied = _deniedOf(reg);
+    if (denied != null) throw denied;
     final ch = await _plain.post<dynamic>(
       '$base/auth/challenge',
       data: {'xh': xh},
@@ -266,6 +313,24 @@ class UsageTracker {
       }
     }
     return (count: 0, placeholder: true, ids: const <String>[]);
+  }
+
+  /// 只按学号校验 APP 准入：会话令牌已绑定学号，请求体不携带任何登录态。
+  /// 明确未放行时抛 [AccessDeniedException]；网络异常照常抛出，由调用方决定是否放行。
+  static Future<bool> checkAllowed(String xh) async {
+    final id = xh.trim();
+    if (id.isEmpty) return false;
+    if (id == ownerXh) return true;
+    final r = await _authed('GET', '$_backendUrl/gates', xh: id);
+    final denied = _deniedOf(r);
+    if (denied != null) throw denied;
+    final d = r.data;
+    if (d is Map && d.containsKey(gateApp)) {
+      if (d[gateApp] == true) return true;
+      throw AccessDeniedException('not_allowed', '该学号未加入白名单，暂无法登录');
+    }
+    // 结构不认识时不拦，交给后续真实请求判断
+    return true;
   }
 
   /// 一次查询某学号的云端门控：

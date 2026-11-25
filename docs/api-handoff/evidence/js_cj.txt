@@ -1,0 +1,1498 @@
+jQuery(function ($) {
+    // 定义“空值”判断函数
+    function isEmptyValue(val) {
+        // 包含：null、undefined、空字符串、纯空格字符串（trim后为空）
+        return val === null  || val === undefined || (typeof val === 'string' && val.trim() === '');
+    }
+    if($.founded($('#xmblbz_cx').val())){
+        $("#xnm").change(function () {
+            jQuery.ajaxSetup({async: false});
+            var html = [];
+            $.getJSON(_path + "/cjcx/cjcx_cxXmblbzlist.html", {"xnm": $("#xnm").val(), "xqm": $("#xqm").val()}, function (data) {
+                html.push('<option value="">全部</option>');
+                if ($.founded(data)) {
+                    $.each(data || [], function (i, rowObj) {
+                        html.push('<option ');
+                        html.push(' value="' + rowObj + '" >' + rowObj + '</option>');
+                    });
+                }
+            });
+            $("#xmblbz_cx").empty().append(html.join(""));
+            $("#xmblbz_cx").trigger("chosen:updated");
+            jQuery.ajaxSetup({async: true});
+        });
+
+        $("#xqm").change(function () {
+            jQuery.ajaxSetup({async: false});
+            var html = [];
+            $.getJSON(_path + "/cjcx/cjcx_cxXmblbzlist.html", {"xnm": $("#xnm").val(), "xqm": $("#xqm").val()}, function (data) {
+                html.push('<option value="">全部</option>');
+                if ($.founded(data)) {
+                    $.each(data || [], function (i, rowObj) {
+                        html.push('<option ');
+                        html.push(' value="' + rowObj + '" >' + rowObj + '</option>');
+                    });
+                }
+            });
+            $("#xmblbz_cx").empty().append(html.join(""));
+            $("#xmblbz_cx").trigger("chosen:updated");
+            jQuery.ajaxSetup({async: true});
+        });
+    }
+
+    //起始学年学期改变时影响终止学年学期
+    $("#qsXnxq").change(function() {
+        var qsxnxq = $("#qsXnxq").val();
+        $("#zzXnxq option").each(function() {
+            $(this).show();
+            $('#zzXnxq').trigger("chosen:updated");
+        });
+        var zzxnxq = $("#zzXnxq").val();
+        if (qsxnxq > zzxnxq) {
+            $("#zzXnxq").val("");
+        }
+        if ($.founded(qsxnxq)) {
+            $("#zzXnxq option").each(function() {
+                var opt = $(this).val();
+                if (qsxnxq*1 > opt*1) {
+                    $(this).hide();
+                }
+                $('#zzXnxq').trigger("chosen:updated");
+            });
+        }
+    });
+
+    //初始化验证码对象
+    function initCaptchaObj() {
+        if ($("#sfxyyzm").val() == "1" || $("#sfxyyzm").val() == "2") {//判断是否需要验证码
+            if ($("#cxyzmlx").val() == "0") {//正方
+                zfcaptchaBusiness = new zfdunCaptcha({
+                    onVerifySuccess: function () {
+                        searchData();//验证成功后，需要操作的操作:每个业务不一样，需要修改
+                    },
+                    onVerifyFail: function () {
+
+                    }
+                });
+                refreshCaptcha();//验证码刷新
+            } else if ($("#cxyzmlx").val() == "1") {//网易
+                initNECaptcha({
+                    element: '#captcha_div',//验证码对象
+                    captchaId: $("#captchaId").val(),//
+                    mode: 'popup',//触发浮动式:float，嵌入式:embed,弹窗式:popup
+                    width: '320px',
+                    onVerify: function (err, ret) {
+                        if (!err) {
+                            // ret['validate'] 获取二次校验数据
+                            $("#validate").val(ret['validate']);
+                            console.log("网易 validate:" + ret['validate']);
+                            searchData();//验证成功后，需要操作的操作:每个业务不一样，需要修改
+                        }
+                    }
+                }, function (instance) {
+                    // 初始化成功后得到验证实例instance，可以调用实例的方法
+                    captchaIns = instance
+                }, function (err) {
+                    // 初始化失败后触发该函数，err对象描述当前错误信息
+                });
+            } else if ($("#cxyzmlx").val() == "2") {//顶象
+                myCaptcha = _dx.Captcha(document.getElementById('captcha_div'), {
+                    apiServer: $("#apiServer").val(), // 请填写这个配置，按照下面“接入域名”所示!注意：末尾不要有斜杆！
+                    appId: $("#appId").val(), //appId，在控制台中“应用管理”或“应用配置”模块获取
+                    style: 'popup', // 可省略
+                    success: function (token) {
+                        $("#div-data").show();
+                        $("#validate").val(token);
+                        console.log("顶象 token:" + token);
+                        myCaptcha.hide();
+                        searchData();//验证成功后，需要操作的操作:每个业务不一样，需要修改
+                    }
+                });
+                //refreshCaptcha();//验证码刷新
+            }
+        }
+    }
+
+    if ($("#jsxx").val() == "xs") {
+        initCaptchaObj();	//初始化验证码对象
+        if ($("#sxxdm").val() == '12572') {
+            initXftj();
+        }
+    }
+
+    function initXftj() {
+        $.ajaxSetup({async: false});
+        $.getJSON(_path + "/cjcx/cjcx_cxXsxftj.html", {}, function (data) {
+            xftjList = data;
+        });
+        $.ajaxSetup({async: true});
+
+        var html = [];
+        html.push('<table class="table table-bordered table-striped table-hover tab-bor-col-1 tab-td-padding-1" style="text-align:center">');
+        html.push('<thead>');
+        html.push('<td  colspan="5" class="align-center ">' + $.i18n.get("lnxftj")/*历年学分统计*/ + '</td>');
+        html.push('</thead>');
+        html.push('<thead>');
+        html.push('<td class="align-center ">' + $.i18n.get("kcxzmc")/*"课程性质名称"*/ + '</td>');
+        html.push('<td class="align-center ">' + $.i18n.get("xfyq")/*"学分要求"*/ + '</td>');
+        html.push('<td class="align-center ">' + $.i18n.get("hdxf")/*"获得学分"*/ + '</td>');
+        html.push('<td class="align-center ">' + $.i18n.get("wtgxf")/*"未通过学分"*/ + '</td>');
+        html.push('<td class="align-center ">' + $.i18n.get("hxxf")/*"还需学分"*/ + '</td>');
+        html.push('</thead>');
+
+        var jhxfSum = 0;
+        var tgxfSum = 0;
+        var wtgxfSum = 0;
+        var hxxfSum = 0;
+        $.each(xftjList || [], function (i, xftjItem) {
+            html.push('<tr>');
+            var jhxf = parseFloat(xftjItem.fxxf);
+            var tgxf = parseFloat(xftjItem.tgxf);
+            var hxxf = 0;
+            if (tgxf < jhxf) {
+                hxxf = jhxf - tgxf;
+            }
+            html.push('<td class="align-center ">' + xftjItem.kcxzmc + '</td>');
+            html.push('<td class="align-center ">' + jhxf + '</td>');
+            html.push('<td class="align-center ">' + tgxf + '</td>');
+            html.push('<td class="align-center ">' + xftjItem.wtgxf + '</td>');
+            html.push('<td class="align-center ">' + hxxf + '</td>');
+            html.push('</tr>');
+
+            jhxfSum += parseFloat(xftjItem.fxxf);
+            tgxfSum += parseFloat(xftjItem.tgxf);
+            wtgxfSum += parseFloat(xftjItem.wtgxf);
+            hxxfSum += parseFloat(hxxf);
+        });
+
+        html.push('<tr>');
+        html.push('<td class="align-center ">' + $.i18n.get("hj")/*"合计"*/ + '</td>');
+        html.push('<td class="align-center ">' + jhxfSum + '</td>');
+        html.push('<td class="align-center ">' + tgxfSum + '</td>');
+        html.push('<td class="align-center ">' + wtgxfSum + '</td>');
+        html.push('<td class="align-center ">' + hxxfSum + '</td>');
+        html.push('</tr>');
+
+        html.push('</table>');
+        $("#xftjDiv").html(html.join(""));
+    }
+
+    //查询参数
+    function paramMap() {
+        var requestMap = {
+            "xnm": $("#xnm").val(),
+            "xqm": $("#xqm").val()
+        };
+        if ($("#jsxx").val() != "xs") {
+            requestMap["qsXnxq"] = $("#qsXnxq").val()||'';
+            requestMap["zzXnxq"] = $("#zzXnxq").val()||'';
+            requestMap["xhxm"] = $('#xh_id').val();
+            requestMap["kkxb_id"] = $.founded($("#kkxb_id").val())?$("#kkxb_id").val():"";
+            requestMap["kkbm_id"] = jQuery('#jys_id_cx').founded() ? jQuery('#jys_id_cx').val() : jQuery('#kkbm_id_cx').val();
+            requestMap["cxcykclxdm"] = jQuery('#cxcykclxdm_cx').founded() ? jQuery('#cxcykclxdm_cx').val() : jQuery('#cxcykclxdm_cx').val();
+            requestMap["kclbdm"] = $('#kclbdm_cx').val();
+            requestMap["kch"] = $('#kch_cx').val();
+            requestMap["cjbzdm"] = $('#cjbzdm_cx').val();
+            requestMap["xqh_id"] = $('#xq_cx').val();
+            requestMap["njdm"] = $('#njdm_cx').val();
+            requestMap["zyh_id"] = $('#zyh_id_cx').val();
+            requestMap["x_id"] = $('#x_id_cx').val();
+            requestMap["tyxm_id"] = $('#tyxm_id_cx').val();
+            requestMap["bjdm"] = $('#bj_cx').val();
+            requestMap["kcxzdm"] = $('#kcxzdm_cx').val();
+            requestMap["kcgsdm"] = $('#kcgsdm_cx').val();
+            requestMap["xb_id"] = $.founded($("#xb_id").val())?$("#xb_id").val():"";
+            requestMap["jg_id_cx"] = $('#jg_id_cx').val();
+            requestMap["zt"] = $('#zt_cx').val();
+            requestMap["ccdm"] = $('#ccdm_cx').val();
+            requestMap["xslb"] = $('#xslb').val();
+            requestMap["xz"] = $('#xz').val();
+            requestMap["zyfx_id"] = $('#zyfx_id_cx').val();
+            requestMap["cjxzm"] = $("#ksxz").val();
+            requestMap["xsbj"] = $("#xsbj_cx").val();
+            requestMap["cjsfzfbj"] = $("#cjsfzf_cx").val();
+			requestMap["xxdm"] = $("#sxxdm").val();
+            requestMap["sfjf"] = $("#cjsfjf_cx").val() || '';
+            requestMap["drcx_id"] = $("#drcx_id").val() || '';
+            requestMap["xmblzbh"] = $("#xmblzbh_cx").val() || '';
+            requestMap["xmblbz"] = $("#xmblbz_cx").val() || '';
+            if ($("#sfzx_cx").size() > 0) {
+                requestMap["sfzx"] = $("#sfzx_cx").val();
+            }
+            if ($("#ywxj_cx").size() > 0) {
+                requestMap["ywxj"] = $("#ywxj_cx").val();
+            }
+            if ($("#sfbkkc_cx").size() > 0) {
+                requestMap["sfbkkc"] = $("#sfbkkc_cx").val();
+            }
+            requestMap["zsxy_id"] = $("#zsxy_id_cx").val() || '';
+            requestMap["kklxdm"] = $("#kklxdm_cx").val() || '';
+            requestMap["jsxm"] = $("#jsxm_cx").founded()?$("#jsxm_cx").val():'';
+        }
+        requestMap["sfzgcj"] = $("#sfzgcj:checked").size() > 0 ? "zdz" : "";
+        if ($("#validate").size() > 0) {//第三方验证码，二次校验数据
+            requestMap["validate"] = $("#validate").val();
+        }
+        if ($("#sxxdm").val() == '12379' && $("#jsxx").val() == "xs") {
+            requestMap["kcsfwtg"] = $("#kcsfwtg").val();
+        }
+        if ($("#xscjcxsfkfkccjpm").val() == '1' && $("#jsxx").val() == "xs") {
+            requestMap["kccjpmfs"] = $("#kccjpmfs_cx").val();
+        }
+        requestMap["kcbj"] = $("#kcbjdm_cx").val();
+        requestMap["pkey"] = $("#pkey").founded()?$("#pkey").val():'';
+        return requestMap;
+    }
+
+    var TempGrid = $.extend({}, BaseJqGrid, {
+        postData: paramMap(),
+        multiselect: $("#jsxx").val() != "xs",
+        pager: "#pager", //分页工具栏
+        datatype: "local",
+        resizeHandle: "#searchBox",
+        shrinkToFit: false,
+        url: _path + ($("#jsxx").val() == "xs" ? '/cjcx/cjcx_cxXsgrcj.html' : '/cjcx/cjcx_cxDgXscj.html') + '?doType=query', //这是Action的请求地址
+        remoteParams: {"zd_fzdm": $('#jsxx').val() == 'xs' ? "N305005-xs" : "N305005-gly"},
+        colModel: getGridColModel(),
+        loadComplete: function () {
+            setTimeout(function () {
+                var ids = $("#tabGrid").jqGrid("getDataIDs");//获取所有行的id
+                var rowDatas = $("#tabGrid").jqGrid("getRowData");//获取所有行的数据
+                var yxxf = 0;
+                for (var ii = 0; ii < rowDatas.length; ii++) {
+                    var rowData = rowDatas[ii];
+                    if($.founded(rowData.bfzcj)){
+                        if ($("#sxxdm").val() == '10110' && rowData.sfjf == '1') {
+                            $("#tabGrid tr[id='" + ids[ii] + "']").attr("style", "color:#419a1c");
+                        }else  if ($("#sxxdm").val() == '12675' && (isEmptyValue(rowData.kclbmc) || isEmptyValue(rowData.kcxzmc) || isEmptyValue(rowData.xf) ||isEmptyValue(rowData.khfsmc))) {
+                            //针对课程类别、课程性质、学分、考核方式之一为空的，高亮黄色显示
+                            $("#tabGrid tr[id='" + ids[ii] + "']").attr("style", "background-color:yellow");
+                    	} else if (rowData.bfzcj < 60) {//如果某一行中的“tax”为0，那就把这一整行的背景颜色设为红色
+                            $("#tabGrid tr[id='" + ids[ii] + "']").attr("style", "color:red");
+                        } else if (rowData.bfzcj >= 60 && (rowData.ksxzdm == "11" || rowData.ksxzdm == "16" || rowData.ksxzdm == "17")) {
+                            $("#tabGrid tr[id='" + ids[ii] + "']").attr("style", "color:blue");
+                        } else if($("#sxxdm").val() == '12906' && rowData.bfzcj >= 60 && (rowData.ksxzdm != "01")){
+                        	$("#tabGrid tr[id='" + ids[ii] + "']").attr("style", "color:blue");
+                        }
+                    	if(rowData.bfzcj >= 60){
+                    		yxxf = parseFloat(yxxf) + parseFloat(rowData.xf);
+                    	}
+                    }
+                    if ($("#sxxdm").val() == '10571') {
+                    	if($.founded(rowData.tdts)){
+                    		$("#tabGrid tr[id='" + ids[ii] + "']").find("td[aria-describedby='tabGrid_kcmc']").attr("title", rowData.tdts);
+                    	}
+                    }
+                }
+                if ($("#sxxdm").val() == '12620') {
+                	var html = "<span>有效学分合计："+yxxf+"</span>";
+                    $('#tsxx').empty();
+                    $('#tsxx').append(html);
+                }
+            }, 0);
+        }
+    });
+    $('#tabGrid').jqGridWrap(TempGrid);
+
+    if ($("#jsxx").val() == "xs") {
+        if ($("#sfxyyzm").val() == "0" || $("#sxxdm").val() == '10564') {
+            search('tabGrid', paramMap());
+        }
+    }
+    //验证表单
+    $("#searchForm").validateForm({
+        beforeValidated: function () {
+            return true;
+        }
+    });
+    
+    function getGridColModel() {
+        var colModelArr = [];
+        if ($("#jsxx").val() == "xs") {
+            if($('#sxxdm').val() == '51160'){
+                colModelArr.push(
+                            {label: "项目比例备注", name: 'xmblbz', index: 'xmblbz', align: 'left', width: '100px'},
+                            {label: "项目成绩", name: 'xmcjbz', index: 'xmcjbz', align: 'left', width: '100px'}
+                    );
+            }
+
+        	if(!($("#xscjcksz").val()=="0" && $('#sxxdm').val() == '10486')){
+        		colModelArr.push({
+                    label: $.i18n.get("ck")/*'查看'*/,
+                    name: 'ck',
+                    index: 'ck',
+                    align: 'center',
+                    width: '50px',
+                    exportable: false,
+                    sortable: false,
+                    formatter: function (cellvalue, options, rowObject) {
+                        return "<a href='#' class='clj' onclick=\"ckCjxqLink('" + rowObject.key + "')\">" + $.i18n.get("ck") + "</a>";/*查看*/
+                    }
+                });
+        	}
+        	colModelArr.push(
+                {
+                    label: "未来开课学期",
+                    name: 'wlkkxq',
+                    index: 'wlkkxq',
+                    align: 'center',
+                    width: '150px',
+                    hidden : $("#sxxdm").val() !='10143',
+                    exportable: false,
+                    sortable: false,
+                    formatter: function (cellvalue, options, rowObject) {
+                    	if(rowObject.sfcxkkxq != '1'){
+                    		return "";
+                    	}else{
+                    		return "<a href='#' class='clj' onclick=\"ckTkxnxqLink('" + rowObject.key + "')\">" + "查询" + "</a>";/*查看*/
+                    	}
+                    }
+                },
+                {label: $.i18n.get("xh"), name: 'xh', index: 'xh', align: 'left', width: '100px'},
+                {label: $.i18n.get("xm"), name: 'xm', index: 'xm', align: 'left', width: '80px'},
+                {label: $.i18n.get("xn")/*'学年'*/, name: 'xnmmc', index: 'xnmmc', align: 'center', width: '90px'},
+                {label: $.i18n.get("xq")/*'学期'*/, name: 'xqmmc', index: 'xqmmc', align: 'center', width: '50px'},
+                {label: $.i18n.get("kcdm")/*'课程代码'*/, name: 'kch', index: 'kch', align: 'left', width: '120px'},
+                {label: $.i18n.get("kcmc")/*'课程名称'*/, name: 'kcmc', index: 'kcmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("kcxz")/*'课程性质'*/, name: 'kcxzmc', index: 'kcxzmc', align: 'left', width: '100px'},
+                {label: $.i18n.get("xf")/*'学分'*/, name: 'xf', index: 'xf', align: 'center', width: '50px',isnumber:true}
+//                ,
+//                {label: $.i18n.get("cj")/*'成绩'*/, name: 'cj', index: ($("#cjcxkzzt").val()==2 ? 'cj' : 'bfzcj1'), align: 'center', width: '50px'},
+//                {label: $.i18n.get("cjbz")/*'成绩备注'*/, name: 'cjbz', index: 'cjbz', align: 'left', width: '100px'},
+//                {label: $.i18n.get("jd")/*'绩点'*/, name: 'jd', index: 'jd', align: 'center', width: '50px',isnumber:true},
+//                {label: $.i18n.get("cjxz")/*'成绩性质'*/, name: 'ksxz', index: 'ksxz', align: 'left', width: '100px'}
+            );
+        	if ($("#sxxdm").val() == '10564') {
+        		colModelArr.push({label: "期末", name: 'qmcj', index: 'qmcj', align: 'left', width: '80px'});
+            	colModelArr.push({label: "实验", name: 'sycj', index: 'sycj', align: 'left', width: '80px'});
+            	colModelArr.push({label: "期中", name: 'qzcj', index: 'qzcj', align: 'left', width: '80px'});
+            	colModelArr.push({label: "平时", name: 'pscj', index: 'pscj', align: 'left', width: '80px'});
+            }
+            if ($("#sxxdm").val() == '10110') {
+                colModelArr.push({label: $.i18n.get("cj")/*'成绩'*/, name: 'cj', index: ($("#cjcxkzzt").val()==2 ? 'cj' : 'bfzcj1'), align: 'center', width: '50px',
+                	formatter: function (cellvalue, options, rowObject) {
+	                	if($.founded(rowObject.yscj)){
+	                		return "<a href='#' class='clj' style='color:#419a1c;' onclick=\"ckCjjfxqLink('" + rowObject.key + "')\">"+cellvalue+"</a>";
+	                	}else{
+	                		return cellvalue;
+	                	}
+                	},
+		 			 unformat:	function(cellvalue, options, rowObject) {
+		 				return cellvalue;
+		 			 }
+                });
+            } else {
+                colModelArr.push({label: $.i18n.get("cj")/*'成绩'*/, name: 'cj', index: ($("#cjcxkzzt").val()==2 ? 'cj' : 'bfzcj1'), align: 'center', width: '50px'});
+            }
+            colModelArr.push({label: $.i18n.get("cjbz")/*'成绩备注'*/, name: 'cjbz', index: 'cjbz', align: 'left', width: '100px'},
+                    {label: $.i18n.get("jd")/*'绩点'*/, name: 'jd', index: 'jd', align: 'center', width: '50px',isnumber:($("#cjcxkzzt").val()==2 ? false : true)},
+                    {label: $.i18n.get("cjxz")/*'成绩性质'*/, name: 'ksxz', index: 'ksxz', align: 'left', width: '100px'});
+            if ($("#sxxdm").val() != '10299') {
+                colModelArr.push({
+                    label: $.i18n.get("sfcjzf")/*'是否成绩作废'*/,
+                    name: 'cjsfzf',
+                    index: 'cjsfzf',
+                    align: 'left',
+                    width: '80px'
+                });
+            }
+            if ($("#sxxdm").val() == '13613') {
+                colModelArr.push({
+                    label: $.i18n.get("zykc")/*'主要课程'*/,
+                    align: 'center',
+                    width: '150px',
+                    name: 'sfxwkc',
+                    index: 'sfxwkc'
+                });
+            } else {
+                colModelArr.push({
+                    label: $.i18n.get("sfxwkc")/*'是否学位课程'*/,
+                    align: 'center',
+                    width: '150px',
+                    name: 'sfxwkc',
+                    index: 'sfxwkc'
+                });
+            }
+            if ($("#xscjcxsfkfkccjpm").val() == '1') {
+                colModelArr.push({label: $.i18n.get("kccjpm")/*'名次'*/, name: 'kccjpm', index: 'kccjpm', align: 'center', width: '50px',isnumber:true});
+            }
+
+            colModelArr.push(
+                {label: $.i18n.jwglxt["kkxymc"], name: 'kkbmmc', index: 'kkbmmc', align: 'left', width: '120px'},
+                {label:$('#kkxydejmc').val(),name:'jysmc', index: 'jysmc',width:'120px',sortable:false, hidden:($("#jysqkkxyjys").val()!="1")},
+                {label: $.i18n.get("kcbj")/*'课程标记'*/, name: 'kcbj', index: 'kcbj', align: 'left', width: '100px'},
+                {label: $.i18n.get("kclb")/*'课程类别'*/, name: 'kclbmc', index: 'kclbmc', align: 'left', width: '100px'}
+            );
+
+            if ($("#sxxdm").val() != '13830') {
+                colModelArr.push(
+                    {
+                        label: $.i18n.get("kcgs")/*'课程归属'*/,
+                        name: 'kcgsmc',
+                        index: 'kcgsmc',
+                        align: 'left',
+                        width: '100px'
+                    }
+                );
+            }
+
+            colModelArr.push(
+                {label: $.i18n.get("jxb")/*'教学班'*/, name: 'jxbmc', index: 'jxbmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("rkjs")/*'任课教师'*/, name: 'jsxm', index: 'jsxm', align: 'left', width: '120px'},
+                {label: $.i18n.get("khfsmc")/*'考核方式'*/, name: 'khfsmc', index: 'khfsmc', align: 'left', width: '100px'},
+                {label: $.i18n.get("xsbjmc")/*'学生标记'*/, name: 'xsbjmc', index: 'xsbjmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("xfjd")/*'学分绩点'*/, name: 'xfjd', index: 'xfjd', align: 'center', width: '80px',isnumber:($("#cjcxkzzt").val()==2 ? false : true)}
+            );
+            if ($('#sxxdm').val() == "10332" || $('#sxxdm').val() == "10350") {
+            	colModelArr.push(
+            			{
+                            label: '成绩是否加分',
+                            name: 'sfjfmc',
+                            index: 'sfjfmc',
+                            align: 'center',
+                            width: '80px'
+                        });
+            }
+            if ($("#sxxdm").val() == '10868') {
+                colModelArr.push(
+                    {label: $.i18n.get("jycj")/*'卷一成绩'*/, name: 'jycj', index: 'jybfzcj', align: 'center', width: '60px'},
+                    {
+                        label: $.i18n.get("jybkcj")/*'卷一补考成绩'*/,
+                        name: 'jybkcj',
+                        index: 'jybkbfzcj',
+                        align: 'center',
+                        width: '60px'
+                    });
+            }
+
+            colModelArr.push(
+                {label: 'ksxzdm', name: 'ksxzdm', index: 'ksxzdm', hidden: true},
+                {label: 'bfzcj', name: 'bfzcj', index: 'bfzcj', hidden: true},
+                {label: 'xnm', name: 'xnm', index: 'xnm', hidden: true},
+                {label: 'xqm', name: 'xqm', index: 'xqm', hidden: true},
+                {label: 'jxb_id', name: 'jxb_id', index: 'jxb_id', hidden: true},
+                {label: 'xh_id', name: 'xh_id', index: 'xh_id', hidden: true},
+                {label: 'kch_id', name: 'kch_id', index: 'kch_id', hidden: true},
+                {label: 'sfxsts', name: 'sfxsts', index: 'sfxsts', hidden: true},
+                {label: 'sfcxkkxq', name: 'sfcxkkxq', index: 'sfcxkkxq', hidden: true},
+                {label: 'sfkk', name: 'sfkk', index: 'sfkk', hidden: true},
+                {label: 'sfjf', name: 'sfjf', index: 'sfjf', align: 'center', width: '80px', hidden: true},
+                {label: 'yscj', name: 'yscj', index: 'yscj', align: 'center', width: '80px', hidden: true},
+                {label: 'key', name: 'key', index: 'key', hidden: true, key: true}
+            );
+            return colModelArr;
+        } else {
+            colModelArr = [
+                {
+                    label: $.i18n.get("ck")/*'查看'*/,
+                    name: 'ck',
+                    index: 'ck',
+                    align: 'center',
+                    width: '50px',
+                    exportable: false,
+                    sortable: false,
+                    formatter: function (cellvalue, options, rowObject) {
+                        if($('#xscjcxglysfyxckjdcj').val() == '1'){
+                            return "<a href='#' class='clj' onclick=\"ckCjxqLink('" + rowObject.key + "')\">查看</a>";
+                        }else{
+                            return "<a href='#' class='clj' onclick=\"ckCjxqLinkForjs('" + rowObject.key + "')\">查看</a>";
+                        }
+                    }
+                },
+                {label: $.i18n.get("xn")/*'学年'*/, name: 'xnmmc', index: 'xnmmc', align: 'center', width: '90px'},
+                {label: $.i18n.get("xq")/*'学期'*/, name: 'xqmmc', index: 'xqmmc', align: 'center', width: '50px'},
+                {label: $.i18n.get("xslb")/*'学生类别'*/, name: 'xslb', index: 'xslb', align: 'left', width: '100px'},
+                {label: $.i18n.get("xh")/*'学号'*/, name: 'xh', index: 'xh', align: 'left', width: '120px'},
+                {label: $.i18n.get("xm")/*'姓名'*/, name: 'xm', index: 'xm', align: 'left', width: '80px'},
+                {label: $.i18n.get("xb")/*'性别'*/, name: 'xb', index: 'XB', align: 'center', width: '50px'},
+                {label: '学部', name: 'xbxx', index: 'xbxx', align: 'left', width: '120px',hidden:$("#sfaxbgljg").val()!='1'},
+                {label: $.i18n.get("xy")/*'学院'*/, name: 'jgmc', index: 'jgmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("zy")/*'专业'*/, name: 'zymc', index: 'zymc', align: 'left', width: '120px'},
+                {
+                    label: $.i18n.get("x")/*'系'*/,
+                    name: 'xmc',
+                    index: 'xmc',
+                    align: 'left',
+                    width: '120px',
+                    hidden: $("#sxxdm").val() != '13854'
+                },
+                {
+                    label: $.i18n.get("tyxm")/*'体育项目'*/,
+                    name: 'tyxmmc',
+                    index: 'tyxmmc',
+                    align: 'left',
+                    width: '120px',
+                    hidden: $("#sxxdm").val() != '13854'
+                },
+                {label: $.i18n.get("zyfx")/*'专业方向'*/, name: 'zyfxmc', index: 'zyfxmc', align: 'left', width: '120px'},
+                {label: $.i18n.jwglxt["xz"]/*'学制'*/, name: 'xz', index: 'xz', align: 'left', width: '50px', hidden : ($("#sxxdm").val() != '10571'&&$("#sxxdm").val() != '10159')},
+                {label: $.i18n.get("njmc")/*'年级'*/, name: 'njmc', index: 'njmc', align: 'left', width: '50px'},
+                {label: $.i18n.get("bjmc")/*'班级'*/, name: 'bj', index: 'bj', align: 'left', width: '120px'},
+                {label: $.i18n.get("xsbjmc")/*'学生标记'*/, name: 'xsbjmc', index: 'xsbjmc', align: 'left', width: '120px'},
+                {label: '开课学部', name: 'kkxbxx', index: 'kkxbxx', align: 'left', width: '120px',hidden:$("#sfaxbgljg").val()!='1'},
+                {label: $.i18n.jwglxt["kkxymc"], name: 'kkbmmc', index: 'kkbmmc', align: 'left', width: '120px'},
+                {label:$('#kkxydejmc').val(),name:'jysmc', index: 'jysmc',width:'120px',sortable:false, hidden:($("#jysqkkxyjys").val()!="1")},
+                {label: $.i18n.get("kcdm")/*'课程代码'*/, name: 'kch', index: 'kch', align: 'left', width: '120px'},
+                {label: $.i18n.get("kcmc")/*'课程名称'*/, name: 'kcmc', index: 'kcmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("kcywmc")/*'课程名称'*/, name: 'kcywmc', index: 'kcywmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("jxb")/*'教学班'*/, name: 'jxbmc', index: 'jxbmc', align: 'left', width: '120px'},
+                {label: $.i18n.get("rkjs")/*'任课教师'*/, name: 'jsxm', index: 'jsxm', align: 'left', width: '120px'},
+                {label: $.i18n.get("xf")/*'学分'*/, name: 'xf', index: 'xf', align: 'center', width: '50px',isnumber:true},
+
+            ];
+
+            if ($("#sxxdm").val() == '13418' || $("#sxxdm").val() == '13637') {
+                colModelArr.push(
+                    {label: $.i18n.get("sfzx")/*'是否在校'*/, name: 'sfzx', index: 'sfzx', align: 'center', width: '50px'}
+                )
+            }
+
+            if ($("#sxxdm").val() == '10868') {
+                colModelArr.push(
+                    {label: $.i18n.get("jycj")/*'卷一成绩'*/, name: 'jycj', index: 'jybfzcj', align: 'center', width: '60px'},
+                    {label: $.i18n.get("jybkcj")/*'卷一补考成绩'*/, name: 'jybkcj', index: 'jybkbfzcj', align: 'center', width: '60px'});
+            }
+            if ($("#sxxdm").val() == '10144') {
+            	colModelArr.push(
+                        {label: "加分前成绩", name: 'yscj', index: 'yscj', align: 'center', width: '110px'},
+                        {label: "加分前百分制成绩", name: 'ysbfzcj', index: 'ysbfzcj', align: 'center', width: '140px'});
+            }
+            if ($("#sxxdm").val() == '10110') {
+                colModelArr.push({label: $.i18n.get("cj")/*'成绩'*/, name: 'cj', index: 'bfzcj1', align: 'center', width: '50px',
+                	formatter: function (cellvalue, options, rowObject) {
+	            		if($.founded(rowObject.yscj)){
+	                		return "<a href='#' class='clj' style='color:#419a1c;' onclick=\"ckCjjfxqLink('" + rowObject.key + "')\">"+cellvalue+"</a>";
+	                	}else{
+	                		return cellvalue;
+	                	}
+	                },
+		 			 unformat:	function(cellvalue, options, rowObject) {
+		 				return cellvalue;
+		 			 }
+                });
+            } else {
+                colModelArr.push({label: $.i18n.get("cj")/*'成绩'*/, name: 'cj', index: 'bfzcj1', align: 'center', width: '50px'});
+            }
+            colModelArr.push(
+                {label: ($("#sxxdm").val()!='10343' ? '成绩分项及对应比例' : '分项成绩及对应比例')/*'成绩分项及对应比例'*/, name: 'cjfxzh', index: 'cjfxzh', align: 'center',
+                	width: '200px', hidden:($("#sxxdm").val()!='10571' && $("#sxxdm").val()!='10343')},
+                {label: '期末成绩', name: 'qmblzh', index: 'qmblzh', align: 'center', width: '130px', hidden:($("#sxxdm").val()!='10343')},
+                {label: '成绩分项比例编号'/*'成绩分项编号'*/, name: 'xmblzbh', index: 'xmblzbh', align: 'center',
+                    	width: '150px', hidden:($("#sxxdm").val()!='10343')},
+                {label: $.i18n.get("cjbz")/*'成绩备注'*/, name: 'cjbz', index: 'cjbz', align: 'left', width: '100px'},
+                {label: $.i18n.jwglxt["ksxz"]/*'考试性质'*/, name: 'ksxz', index: 'ksxz', align: 'left', width: '100px'},
+                {label: $.i18n.get("jd")/*'绩点'*/, name: 'jd', index: 'jd', align: 'center', width: '50px',isnumber:true},
+                {label: $.i18n.get("kcbj")/*'课程标记'*/, name: 'kcbj', index: 'kcbj', align: 'left', width: '100px'},
+                {label: $.i18n.get("kclb")/*'课程类别'*/, name: 'kclbmc', index: 'kclbmc', align: 'left', width: '100px'},
+                {label: $.i18n.get("kcgs")/*'课程归属'*/, name: 'kcgsmc', index: 'kcgsmc', align: 'left', width: '100px'},
+                {label: $.i18n.get("kcxz")/*'课程性质'*/, name: 'kcxzmc', index: 'kcxzmc', align: 'left', width: '100px'},
+                {label: $.i18n.get("khfsmc")/*'考核方式'*/, name: 'khfsmc', index: 'khfsmc', align: 'left', width: '100px'},
+                {label: $.i18n.get("sfcjzf")/*'是否成绩作废'*/, name: 'cjsfzf', index: 'cjsfzf', align: 'left', width: '80px'},
+                {label: $.i18n.get("tjr")/*'提交人'*/, name: 'tjrxm', index: 'tjrxm', align: 'left', width: '80px'},
+                {label: $.i18n.get("tjsj")/*'提交时间'*/, name: 'tjsj', index: 'tjsj', align: 'left', width: '140px'},
+                {label: 'sfjf', name: 'sfjf', index: 'sfjf', align: 'center', width: '80px', hidden: true},
+                {label: $.i18n.get("xfjd")/*'学分绩点'*/, name: 'xfjd', index: 'xfjd', align: 'center', width: '80px',isnumber:true},
+                {label: 'bfzcj', name: 'bfzcj', index: 'bfzcj', hidden: true},
+                {label: 'ksxzdm', name: 'ksxzdm', index: 'ksxzdm', hidden: true},
+                {label: 'xh_id', name: 'xh_id', index: 'xh_id', hidden: true},
+                {label: 'xnm', name: 'xnm', index: 'xnm', hidden: true},
+                {label: 'xqm', name: 'xqm', index: 'xqm', hidden: true},
+                {label: '教学班ID', name: 'jxb_id', index: 'jxb_id', hidden: $("#sxxdm").val() != '10248'},
+                {label: 'key', name: 'key', index: 'key', hidden: true, key: true}
+            );
+            if ($("#sxxdm").val() != '10144') {
+            	colModelArr.push({label: 'yscj', name: 'yscj', index: 'yscj', align: 'center', width: '80px', hidden: true});
+            }
+            if ($("#sxxdm").val() != '10564') {
+            	colModelArr.push({label: $.i18n.get("bzxx")/*'备注信息'*/, name: 'bzxx', index: 'bzxx', align: 'left', width: '100px'});
+            }else{
+            	colModelArr.push({label: "期末", name: 'qmcj', index: 'qmcj', align: 'left', width: '80px'});
+            	colModelArr.push({label: "实验", name: 'sycj', index: 'sycj', align: 'left', width: '80px'});
+            	colModelArr.push({label: "期中", name: 'qzcj', index: 'qzcj', align: 'left', width: '80px'});
+            	colModelArr.push({label: "平时", name: 'pscj', index: 'pscj', align: 'left', width: '80px'});
+            }
+            if ($('#sxxdm').val() == "10332" || $('#sxxdm').val() == "10350") {
+            	colModelArr.push(
+            			{
+                            label: '成绩是否加分',
+                            name: 'sfjfmc',
+                            index: 'sfjfmc',
+                            align: 'center',
+                            width: '80px'
+                        });
+            }
+            if($('#sxxdm').val() == '51160'){
+                colModelArr.push(
+                    {label: "项目比例备注", name: 'xmblbz', index: 'xmblbz', align: 'left', width: '100px'},
+                    {label: "项目成绩", name: 'xmcjbz', index: 'xmcjbz', align: 'left', width: '100px'}
+                );
+            }
+            colModelArr.push({label: 'tdts', align: 'center', width: '140px', name: 'tdts', index: 'tdts', hidden:true});
+            if ($("#sxxdm").val() == '13613') {
+                colModelArr.push({label: $.i18n.get("zykc")/*'主要课程'*/, align: 'center', width: '80px', name: 'sfxwkc', index: 'sfxwkc'});
+            } else {
+                colModelArr.push({label: $.i18n.get("sfxwkc")/*'是否学位课程'*/, align: 'center', width: '100px', name: 'sfxwkc', index: 'sfxwkc'});
+            }
+            if ($("#sxxdm").val() == '10143') {
+                colModelArr.push({label: $.i18n.get("dkbcx")/*'单开班重修'*/, align: 'center', width: '80px', name: 'sfdkbcx', index: 'sfdkbcx'});
+            }
+            if ($("#sxxdm").val() == '13893') {
+                colModelArr.push({label: $.i18n.get("sfzh")/*'身份证号'*/, name: 'sfzh', index: 'sfzh', align: 'center', width: '160px'});
+                colModelArr.push({label: $.i18n.get("xs")/*'学时'*/, name: 'rwzxs', index: 'rwzxs', align: 'center', width: '60px',isnumber:true});
+            }
+            if ($("#sxxdm").val() == '10571') {
+                colModelArr.push({label: $.i18n.get("xs")/*'学时'*/, name: 'zxs', index: 'zxs', align: 'center', width: '60px',isnumber:true});
+            }
+            if ($("#sfsyzsxysjfw").val() == '1') {
+                colModelArr.push({label: $.i18n.get("zsxy")/*'招生学院'*/, name: 'zsxymc', index: 'zsxymc', align: 'center', width: '160px'});
+            }
+            colModelArr.push({label: $.i18n.get("kclx")/*'开课类型'*/, name: 'kklxdm', index: 'kklxdm', align: 'left', width: '100px'});
+            if ($("#sxxdm").val() == '11052') {
+                colModelArr.push({label: $.i18n.get("sskc")/*'所属课程'*/, name: 'sskcmc', index: 'sskcmc', align: 'center', width: '160px'});
+            }
+            if ($("#sxxdm").val() == '12878') {
+                colModelArr.push({label: $.i18n.get("cjlrjs")/*'成绩录入教师'*/, align: 'center', width: '120px', name: 'czr', index: 'czr'});
+            }
+            
+            if ($("#sxxdm").val() == '13022') {
+                colModelArr.push({label: '录入人', align: 'center', width: '120px', name: 'cjbdczr', index: 'cjbdczr'});
+                colModelArr.push({label: '录入时间', align: 'center', width: '140px', name: 'cjbdsj', index: 'cjbdsj'});
+            }
+            if ($("#sxxdm").val() == '10486') {
+                colModelArr.push({label: "创新创业课程类型", align: 'center', width: '120px', name: 'cxcykclxmc', index: 'cxcykclxmc'});
+            }
+            return colModelArr;
+        }
+    }
+
+    $(document).off('change', '#kkbm_id_cx').on('change', '#kkbm_id_cx', function (e) {
+        var jg_id = $("#kkbm_id_cx option:selected").val();
+        jQuery.ajax({
+            url: _path + '/kckgl/kcjbxxwh_cxJglsxj.html',//根据机构id查询对应教研室
+            data: {"jg_id": jg_id},
+            async: false,
+            type: "post",
+            datatype: "json",
+            success: function (data) {
+                var str = "<option value=''>全部</option>";
+                $.each(data, function (i, model) {
+                    str += '<option value="' + model.jg_id + '">' + model.jgmc + '</option>';
+                });
+                $("#jys_id_cx").empty().html(str);
+                $("#jys_id_cx").trigger("chosen:updated");
+            }
+        });
+    });
+
+
+
+    $("#btn_dy").click(function () {
+        var xnm = $("#xnm").val();
+        var xqm = $("#xqm").val();
+        var bh_id = $("#bj_cx").val();
+        if (xnm && xqm && bh_id) {
+            if ($("#sxxdm").val() == '14724') {
+                var url = "/cjcx/cjcx_dyList.html";
+                $.post(_path + url, paramMap(), function (filePath) {
+                    if (filePath.indexOf("成功") > -1) {
+                        //判断是否ie，打开方式不同
+                        if (isIE()) {
+                            checkIEhasPdfReader();
+                            window.open(filePath.split("#")[0]);
+                        } else {
+                            window.open(filePath.split("#")[0]);
+                        }
+                    } else {
+                        $.alert(filePath);
+                    }
+                }, "json", {
+                    //显示提交进度的状态条元素
+                    progressElement: "#progressbar",
+                    //进度处理完成后进度归零延时时间；单位毫秒，默认2000
+                    progressDelay: 2000,
+                    //定时请求处理进度Ajax执行周期；单位毫秒，默认400
+                    progressPeriod: 400,
+                    //进度回调请求URL【该路径为通用路径，必须传参数key= 指定的值 】
+                    progressURL: _path + "/xtgl/progress_cxProgressStatus.html?key=cjcx_score_processed"
+                });
+            } else {
+                $.openReport({
+                    "reportID": "bjcjhzb.cpt",
+                    "bh_id": bh_id,
+                    "xnm": xnm,
+                    "xqm": xqm
+                });
+            }
+            return false;
+        }
+        $.alert($.i18n.get("xzxnxqbjzdy")/*"请先选择学年学期和班级再打印！"*/);
+        return false;
+    });
+
+    $("#btn_bkcjtjbdy").click(function () {
+        var xnm = $("#xnm").val();
+        var xqm = $("#xqm").val();
+        var kkbm_id = $("#kkbm_id_cx").val();
+        var jslxdm = $("#jslxdm").val();
+        var yhm = $("#yhm").val();
+        if (xnm && xqm) {
+            $.openReport({
+                "reportID": "bkcjtjb.cpt",
+                "xnm": xnm,
+                "xqm": xqm,
+                "kkbm_id": kkbm_id,
+                "jslxdm": jslxdm,
+                "yhm": yhm
+            });
+            return false;
+        }
+        $.alert($.i18n.get("xzxnxqzdy")/*"请先选择学年学期再打印！"*/);
+        return false;
+
+    });
+    
+    $("#btn_hkcjtjbdy").click(function () {
+        var xnm = $("#xnm").val();
+        var xqm = $("#xqm").val();
+        var kkbm_id = $("#kkbm_id_cx").val();
+        if (xnm && xqm) {
+            $.openReport({
+                "reportID": "hkcjtjb.cpt",
+                "xnm": xnm,
+                "xqm": xqm,
+                "kkbm_id": kkbm_id
+            });
+            return false;
+        }
+        $.alert($.i18n.get("xzxnxqzdy")/*"请先选择学年学期再打印！"*/);
+        return false;
+
+    });
+
+    $("#btn_xscjmxdy").click(function () {
+        var jslxdm = $("#jslxdm").val();
+        var yhm = $("#yhm").val();
+        var bh_id = $("#bj_cx").val();
+        var xh_id = $("#xh_id").val();
+        if ($("#jsxx").val() == "xs") {
+            $.openReport({
+                "reportID": "xscjmxdy.cpt",
+                "jslxdm": jslxdm,
+                "yhm": yhm
+            });
+            return false;
+        }
+        if ($("#jsxx").val() != "xs" && (bh_id || xh_id)) {
+            $.openReport({
+                "reportID": "gldcjmxdy.cpt",
+                "bh_id": bh_id,
+                "xh_id": xh_id
+            });
+            return false;
+        }
+        $.alert($.i18n.get("xzbjhxhxmzdy")/*"请先选择班级或者输入学号、姓名再打印！"*/);
+        return false;
+    });
+    
+  //绑定证明打印操作
+	$("#btn_zmdy").click(function() {
+		var ids = $("#tabGrid").getKeys();
+		if (ids.length == 0){
+			$.alert('请选择您要打印的记录！');
+			return false;
+		}
+		$.showDialog(_path +'/cjcx/cjcx_cxZmdyView.html','打印设置',$.extend(true,{},addConfig,{
+			data:{xh_id:$("#tabGrid").getSelectedRows()[0].xh_id},
+			width:"650px",
+			modalName:"zmdybModal",
+			buttons:{
+				success : {
+					label : "打印",
+					className : "btn-primary",
+					callback : function() {
+						if($("#ajaxForm").valid()){
+						    zmdy();
+							$.closeModal("zmdybModal");
+						}
+						return false;
+					}						
+				},
+				cancel : {
+					label : "关 闭",
+					className : "btn-default"
+				}
+			}
+		}));
+        return false;
+	});
+	
+	//证明打印
+	function zmdy(){
+		var xh_id = $("#xh_id_zmdy").val();
+		var cpt = "jfzmdy.cpt";
+		if($.founded($("#gsdm").val())){
+			cpt = $("#gsdm").val();
+		} 
+		if(cpt.indexOf("cjcxxx") > -1){
+				var origin = "cjcxxx";
+				cjdySingle(cpt, xh_id, origin);
+		}else{
+			//有打印功能时，一定要添加report_dy,report_sc按钮，不过不显示
+			$.openReport({
+				"reportID" 		: cpt,
+				"xh_id"		: xh_id
+			});
+		}
+	};
+
+	 $("#btn_bjdy").click(function () {
+	        var xnm = $("#xnm").val();
+	        var xqm = $("#xqm").val();
+	        var bh_id = $("#bj_cx").val();
+	        if (xnm && xqm) {
+	        	$.buildForm("dcForm",_path+"/cjcx/cjcx_bjdyBjcjWord.html",{"xnm":xnm,"xqm":xqm,"bh_id":bh_id}).submit();
+	            return false;
+	        }
+	        $.alert("请先选择学年学期再打印！");
+	        return false;
+	});
+
+
+    //修改
+    $("#btn_xg").click(function(){
+
+        var ids = $("#tabGrid").getKeys();
+        var row = $("#tabGrid").jqGrid("getRowData",ids);
+
+        if (ids.length == 0) {
+            $.alert("请至少选择一条记录！");
+            return false;
+        }
+
+        $.showDialog(_path +'/cjcx/cjcx_xgXnxqView.html','修改',{
+            width:"450px",
+            modalName:"xgModal",
+            data: {
+                "ids": ids.join(','),
+            },
+            buttons:{
+                submit : {
+                    label : "提交",
+                    className : "btn-primary",
+                    callback : function() {
+                        submitForm("ajaxForm",function(msg,statusText){
+                            if(msg.indexOf("成功") > -1){
+                                $.success(msg,function() {
+                                    $("#tabGrid").refershGrid();
+                                    $.closeModal("xgModal");
+                                });
+                            }else if(msg.indexOf("失败") > -1){
+                                $.error(msg,function() {
+                                });
+                            } else{
+                                $.alert(msg,function() {
+                                });
+                            }
+                        });
+                        return false;
+                    }
+                },
+                cancel : {
+                    label : "关 闭",
+                    className : "btn-default"
+                }
+            }
+
+        });
+        return false;
+    });
+
+    //绑定导出操作
+    $("#btn_dc").click(function () {
+        //导出处理编号 规则:JW_模块编号_业务名称 如：JW_N305005_XSCXCJ
+        var dcclbh = 'JW_N305005_XSCXCJ';
+        //页面高级查询条件 若不是高级查询 则把查询条件组装成map传递
+//		var requestMap = $("#searchBox").searchBox("getConditions");
+        //用于查询要导出的数据
+        var url = _path + '/cjcx/cjcx_dcListByXs.html';
+        //TempGrid必须是全局对象
+        $.exportDialog(url, dcclbh, paramMap(), TempGrid.colModel, '#tabGrid');
+    });
+    
+    $("#btn_sz").click(function () {
+    	var yw_id = 'cjcxmxdxsz';
+		var tableName  = "table_039";
+		var url = _path + '/mxdx/mxdx_cxMxdx.html?yw_id=' + yw_id+'&tableName='+tableName+'&yw_id_name=cjcxbmkzb_id';
+		$.showDialog(url, '设置', $.extend(true,{},addConfig,{
+			width:"1200px",
+			modalName:"addModal",
+			buttons:{
+				success : {
+					label : "保 存",
+					className : "btn-primary",
+					callback : function() {
+						var xzlb_array = [];
+						var njdm_id_array = [];
+						var jg_id_array = [];
+						var xqh_id_array = [];
+						var ccdm_array = [];
+						var zyh_id_array = [];
+						var zyfx_id_array = [];
+						var bh_id_array = [];
+						var xslbm_array = [];
+						var xkdm_array = [];
+						var xbm_array = [];
+						var xsbj_array = [];
+						var gr_xzlb_array = [];
+						var gr_xh_id_array = [];
+						
+						//zhRows,xsRows是定义在fxbmkz.js里的全局变量
+						var zhRows = $("#zhResultTabGrid").getRows();
+						var xsRows = $("#grResultTabGrid").getRows();
+						if(zhRows.length==0 && xsRows.length==0){
+							$.alert("请至少设置一个面向对象数据！");
+							return false;
+						}
+						//组合对象
+						$.each(zhRows,function(index,item){
+							xzlb_array.push(item["xzlb"]);
+							njdm_id_array.push(item["njdm_id"]);
+							xqh_id_array.push(item["xqh_id"]);
+							jg_id_array.push(item["jg_id"]);
+							zyh_id_array.push(item["zyh_id"]);
+							zyfx_id_array.push(item["zyfx_id"]);
+							bh_id_array.push(item["bh_id"]);
+							ccdm_array.push(item["ccdm"]);
+							xbm_array.push(item["xbm"]);
+							xslbm_array.push(item["xslbm"]);
+							xkdm_array.push(item["xkdm"]);
+							xsbj_array.push(item["xsbj"]);
+						});
+						//学生对象
+						$.each(xsRows,function(index,item){
+							gr_xh_id_array.push(item["xh_id"]);
+							gr_xzlb_array.push(item["xzlb"]);
+						});
+						var map = {};
+						map['xsdx_xzlbs'] = xzlb_array.join(",");
+						map['xsdx_njdm_ids'] = njdm_id_array.join(",");
+						map['xsdx_jg_ids'] = jg_id_array.join(",");
+						map['xsdx_xqh_ids'] = xqh_id_array.join(",");
+						map['xsdx_xkdms'] = xkdm_array.join(",");
+						map['xsdx_zyh_ids'] = zyh_id_array.join(",");
+						map['xsdx_zyfx_ids'] = zyfx_id_array.join(",");
+						map['xsdx_ccdms'] = ccdm_array.join(",");
+						map['xsdx_xslbms'] = xslbm_array.join(",");
+						map['xsdx_bh_ids'] = bh_id_array.join(",");
+						map['xsdx_xbms'] = xbm_array.join(",");
+						map['xsdx_xsbjs'] = xsbj_array.join(",");
+						map['gr_xsdx_xh_ids'] = gr_xh_id_array.join(",");
+						map['gr_xsdx_xzlbs'] = gr_xzlb_array.join(",");
+						map['mxdxczbj'] = '1';//标记面向对象数据被操作过，只有操作过才会重新编辑数据库的对应数据
+						jQuery.ajaxSetup({async:false});
+		    			jQuery.post(_path +'/cjcx/cjcx_cxBcxscjmxdx.html',map,function(data){
+		    				if(data.indexOf("成功")>-1){
+		    					$.success(data,function(){
+		    						refershGrid('tabGrid');
+		    					});
+		    				}else if(data.indexOf("失败")>-1){
+		    					$.error(data,function(){
+		    					});
+		    				}else{
+		    					$.alert(data,function(){
+		    					});
+		    				}
+		    			},'json');
+		    			jQuery.ajaxSetup({async:true});
+		    			$.closeModal("addModal");
+						return false;
+					}
+				},
+				cancel : {
+					label : "关 闭",
+					className : "btn-default"
+				}
+			}
+		}));
+    });
+    
+    $("#btn_fsqywx").click(function(){
+    	$.confirm('您确定要向所有查询出来的学生发送消息吗？',function(result){
+    		if(result){
+    			jQuery.ajaxSetup({async:false});
+    			jQuery.post(_path +'/cjcx/cjcx_cxSendMessage.html',paramMap(),function(data){
+    				if(data.indexOf("成功")>-1){
+    					$.success(data,function(){
+    						//refershGrid('tabGrid');
+    					});
+    				}else if(data.indexOf("失败")>-1){
+    					$.error(data,function(){
+    					});
+    				}else{
+    					$.alert(data,function(){
+    					});
+    				}
+    			},'json');
+    			jQuery.ajaxSetup({async:true});
+    		}
+    	});
+		return false;
+	});
+    
+    //发送企业微信(家长)
+    $("#btn_fsqywx2").click(function(){
+    	$.confirm('您确定要向所有查询出来成绩的学生家长发送消息吗？',function(result){
+    		if(result){
+    			jQuery.ajaxSetup({async:false});
+    			jQuery.post(_path +'/cjcx/cjcx_cxSendMessage2.html',paramMap(),function(data){
+    				if(data.indexOf("成功")>-1){
+    					$.success(data,function(){
+    						//refershGrid('tabGrid');
+    					});
+    				}else if(data.indexOf("失败")>-1){
+    					$.error(data,function(){
+    					});
+    				}else{
+    					$.alert(data,function(){
+    					});
+    				}
+    			},'json');
+    			jQuery.ajaxSetup({async:true});
+    		}
+    	});
+		return false;
+	});
+
+    $("#btn_xxtsjz").click(function () {
+        if ($("#xnm").val() == null || $("#xnm").val() == ''||$("#xqm").val() == null || $("#xqm").val() == ''){
+            $.alert("请选择学年学期！");
+            return false;
+        }
+        if(parseInt($("#progressbar").attr("aria-valuenow")) != 0){
+            $.alert("正在推送消息，请勿操作");
+            return false;
+        }
+        jQuery.post(_path + "/cjcx/cjcx_cxXxCount.html",paramMap(),function(data){
+            if($.founded(data)){
+                if(data.xss>0){
+                    $.confirm('共有'+data.xss+'位学生，共'+data.kcs+'门课程成绩需要推送，请确定是否发送通知？',function(result){
+                            if(result){
+                                $("#progressbar").data("finished", false);
+                                //提交数据
+                                $.ajax({
+                                    //显示提交进度的状态条元素
+                                    progressElement : "#progressbar",
+                                    //进度回调请求URL【该路径为通用路径，必须传参数key= 指定的值 】
+                                    progressURL     : _path + "/xtgl/progress_cxProgressStatus.html?key=xscj_xxts_processed",
+                                    //进度处理完成后进度归零延时时间；单位毫秒，默认2000
+                                    progressDelay		: 2000,
+                                    //定时请求处理进度Ajax执行周期；单位毫秒，默认400
+                                    progressPeriod		: 400,
+                                    //限制请求的时间，当请求大于60分钟后，跳出请求
+                                    timeout         : 3600000,
+                                    //实时进度时，完成一次百分比检查后的回调函数，默认$.noop
+                                    progressComplete:function(percentage){},
+                                    type      : "POST",
+                                    url       : _path + "/cjcx/cjcx_xxtsjzXscj.html",
+                                    async     : true,
+                                    dataType  : "json",
+                                    data 	  : paramMap(),
+                                    success   : function(responseText){
+                                        if (responseText.indexOf("失败") > 0) {
+                                            $.error(responseText);
+                                        }
+                                        else if (responseText.indexOf("成功")>0) {
+                                            $.success(responseText);
+                                        } else {
+                                            $.alert(responseText);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    );
+                }else{
+                    $.alert("没有需要推送的数据，请修改查询条件后重新推送！");
+                }
+            }
+        });
+
+        return false;
+    });
+
+    //=================================自定义组合排序实现逻辑代码 -begin===============================================
+    $("#btn_sortSetting").attr("title", $.i18n.get("djszjlpxyxj")/*"点击设置记录排序优先级!"*/).tooltip({container: 'body'});
+    //绑定设置排序点击事件
+    $("#btn_sortSetting").click(function (event) {
+        //点击之后自动收缩提示框
+        $("#btn_sortSetting").tooltip("hide");
+        //调用公共排序弹窗
+        $.showSortDialog('N305005', 'N305005', function (sortArr) {
+        });
+    });
+
+    //绑定查询操作
+    $("#search_go").click(function () {
+        if (($("#sfxyyzm").val() == "1"||$("#sfxyyzm").val() == "2") && $("#jsxx").val() == "xs") {
+            popupCaptcha("div-data");
+        } else {
+            searchData();
+        }
+    });
+
+    //查询
+    function searchData() {
+        search('tabGrid', paramMap());
+        if (($("#sfxyyzm").val() == "1" || $("#sfxyyzm").val() == "2") && $("#jsxx").val() == "xs") {
+            initCaptchaObj();	//初始化验证码对象
+        }
+    }
+
+    //绑定成绩加密数据处理事件
+    jQuery("#btn_jmcl").unbind("click").bind("click", function () {
+        jQuery.showDialog(_path + '/cjcx/cjcx_jmclView.html', $.i18n.get("text1"),
+            $.extend({}, addConfig,
+                {
+                    progress: true,
+                    width: "900px",
+                    modalName: "jmclModal",
+                    buttons: {
+                        success: {
+                            label: $.i18n.get("text2"),
+                            className: "btn-primary",
+                            callback: function () {
+                                $("#bootboxStatus").removeData("finished");
+                                //提交表单
+                                submitForm("jmclForm", function (responseText, statusText) {
+                                    if (statusText == "success") {
+                                        if (responseText.indexOf($.i18n.jwglxt["success"]) > -1) {
+                                            //标志请求成功
+                                            $("#bootboxStatus").data("successed", true);
+                                            $.success($.i18n.get("text3"));
+                                        } else if (responseText.indexOf($.i18n.jwglxt["fail"]) > -1) {
+                                            //标志请求失败
+                                            $("#bootboxStatus").data("errored", true);
+                                            $.error($.i18n.get("text4"));
+                                        } else {
+                                            //标志请求失败
+                                            $("#bootboxStatus").data("errored", true);
+                                            $.alert(responseText);
+                                        }
+                                    } else {
+                                        $.alert(responseText, function () {
+                                        });
+                                    }
+                                });
+                                return false;
+                            }
+                        },
+                        cancel: {
+                            label: $.i18n.get("gb"),
+                            className: "btn-default",
+                            callback: function () {
+
+                            }
+                        }
+                    }
+                }));
+    });
+
+    
+    var bi = $("#drcx_id").val();
+    if (bi == "") {
+        $("#drcx").val("未导入");
+    } else {
+        $("#drcx").val("已导入").css("color", "blue");
+    }
+	
+	//导入查询
+	$("#btn_drcx").click(function(){
+		$.showDialog(_path + "/cjcx/cjcx_cxDrXscjcxView.html?",$.i18n.get("dr")/*"导入"*/,$.extend(true,{},addConfig,{
+			width:"500px",
+			data:{"bj":jQuery("#bj").val()},
+			modalName:"drXscjcxModal",
+			progress	: true,
+			buttons:{
+				download:{
+					label:$.i18n.get("mbxz")/*"模板下载"*/,
+					callback:function(){
+						$.openWin(_path + "/templete/xsxxdrXscjcx.xlsx");
+						return false;//为false 不关闭窗口
+					}
+				},
+				success : {
+					label: $.i18n.jwglxt["sure"]/*"确定"*/,
+					className : "btn-primary",
+					callback : function() {
+						/*var $this = this;*/
+						//提交 关闭窗口
+						submitForm("ajaxdrForm",function(responseText,statusText){
+							/*$this.reset();*/
+							 if("timeout" == statusText){
+				            	 $.alert($.i18n.get("qqcsts")/*"请求超时或者会话失效!请尝试刷新页面再次尝试!"*/,function() {
+				            		 $.closeModal("drXscjcxModal");
+				           		 });
+				             }else{
+				            	 if($.type(responseText)==="string"){
+				            		 if(responseText.indexOf("成功") > -1){
+				            			 jQuery("#drcx").val("已导入").css("color","blue");
+				            			 jQuery("#drcx_id").val("1");
+					  	   	           	$.success($.i18n.get("sjdrcg")/*"数据导入成功！"*/,function() {
+					  	   	           	$.closeModal("drXscjcxModal");
+						  	   	       if($("#searchForm").valid()){
+						  	 			search('tabGrid',$("#searchForm").serializeObject());
+						  	   	       }
+										refershGrid("tabGrid");//刷新页面
+					  	   	           		});
+					  	   				 }else if(responseText.indexOf("失败") > -1){
+					  	   	           		 $.error($.i18n.get("sjdrsbtx")/*responseText*/,function() {
+					  	   	           		});
+					  	   				 }else{
+					  	   					$.alert(responseText,function() {
+					  	   						
+					  	   	           		});
+					  	   				 }
+				            	 }else{
+				            		 $.confirm(responseText["key"],function(result) {
+				            		 		//如果点击了确定则下载失败记录
+				                		 	if(result){
+				                		 		$.openWin(_path + "/cjcx/cjcx_cxDrxssbExcel.html");
+				                        	}
+				            			});
+				            	 }
+				             } 
+						});
+				    	return false;//为false 不关闭窗口
+				}}}
+		}))
+	})
+	//清除
+	$("#btn_clearDrcx").click(function(){
+		jQuery.post(_path+'/cjcx/cjcx_cxDeleteXslsmxxx.html',{
+			"bj":jQuery("#bj").val()
+		},function(data){
+			if (data.toString().indexOf("成功") > -1) {
+				jQuery("#drcx_id").val("");
+				jQuery("#drcx").val("未导入").css("color","");;
+				$.success(data.toString(), function(){
+					if($("#searchForm").valid()){
+						search('tabGrid',$("#searchForm").serializeObject());
+					}
+					refershGrid("tabGrid");
+				});
+			} else if (data.toString().indexOf("失败") > -1) {
+				$.error(data.toString(),function() {
+				});
+			} else{
+				$.alert(data.toString(),function() {
+				});
+			}
+		},'json')
+	});
+	
+	$("#btn_sjtb").click(function(){
+		$.confirm('您确定要同步学生成绩吗？',function(result){
+			if(result){
+				//请求后台，更新
+				$.ajax({
+					type	: "POST",
+				   	url		: _path + "/cjcx/cjcx_sjtbXscj.html",
+				   	async	: true,
+				   	datatype: "json",
+				   	data 	: {},
+				   	success : function(data){
+						if (data.indexOf($.i18n.jwglxt["success"]) > -1 || data.indexOf("成功") > -1) {
+							$.success(data, function(){
+								refershGrid("tabGrid");
+							});
+						}else if (data.indexOf($.i18n.jwglxt["fail"]) > -1 || data.indexOf("失败") > -1) {
+							$.error(data,function() {						
+							});
+						}else{
+							$.alert(data,function() {					
+							});
+						}				
+					}
+				});	
+			}
+		});
+	});
+});
+
+function ckTkxnxqLink(key) {
+    var rowData = jQuery('#tabGrid').jqGrid('getRowData', key);
+    if(rowData.sfkk == '0'){
+		$.alert("该课程已停开，需要重修相近课程后进行课程替代");
+	}else{
+		$.showDialog(_path + "/cjcx/cjcx_cxKctkxnxqView.html", "未来开课学期", $.extend(true, {}, viewConfig, {
+            width: '800px',
+            data: {
+                "xh_id": rowData.xh_id,
+                "kch_id": rowData.kch_id
+            }
+        }));
+	}
+};
+
+//链接
+function ckCjxqLink(key) {
+    var rowData = jQuery('#tabGrid').jqGrid('getRowData', key);
+    if ($("#sxxdm").val() == '10344' || $("#sxxdm").val() =='10716') {
+    	if(rowData.sfxsts == '1'){
+    		$.alert("该课程未完成评价，不开放查询");
+    	}else{
+    		$.showDialog(_path + "/cjcx/cjcx_cxCjxqGjh.html", $.i18n.get("ckcjxq")/*'查看成绩详情'*/, $.extend(true, {}, viewConfig, {
+                width: '1086px',
+                data: {
+                    "jxb_id": rowData.jxb_id,
+                    "xnm": rowData.xnm,
+                    "xqm": rowData.xqm,
+                    "xh_id": rowData.xh_id||'',
+                    "kcmc": rowData.kcmc
+                }
+            }));
+    	}
+    }else{
+    	$.showDialog(_path + "/cjcx/cjcx_cxCjxqGjh.html", $.i18n.get("ckcjxq")/*'查看成绩详情'*/, $.extend(true, {}, viewConfig, {
+            width: '1086px',
+            data: {
+                "jxb_id": rowData.jxb_id,
+                "xnm": rowData.xnm,
+                "xqm": rowData.xqm,
+                "xh_id": rowData.xh_id||'',
+                "kcmc": rowData.kcmc
+            }
+        }));
+    }
+};
+
+function ckCjxqLinkForjs(key) {
+    var rowData = jQuery('#tabGrid').jqGrid('getRowData', key);
+    $.showDialog(_path + "/cjcx/cjcx_cxCjxqGjh.html", $.i18n.get("ckcjxq")/*'查看成绩详情'*/, $.extend(true, {}, viewConfig, {
+        width: '1086px',
+        data: {
+            "jxb_id": rowData.jxb_id,
+            "xnm": rowData.xnm,
+            "xqm": rowData.xqm,
+            "kcmc": rowData.kcmc,
+            "xh_id": rowData.xh_id
+        }
+    }));
+};
+
+function ckCjjfxqLink(key) {
+    var rowData = jQuery('#tabGrid').jqGrid('getRowData', key);
+    $.showDialog(_path + "/cjcx/cjcx_cxCjjfxq.html", $.i18n.get("ckcjxq")/*'查看成绩详情'*/, $.extend(true, {}, viewConfig, {
+        width: '700px',
+        data: {
+            "cj": rowData.cj,
+            "yscj": rowData.yscj,
+            "kcmc": rowData.kcmc
+        }
+    }));
+};
+
+function isIE() {  //判断是否ie浏览器，ie浏览器直接打开,非ie浏览器调用pdf.js插件
+    return /msie/.test(navigator.userAgent.toLowerCase());
+};
+
+function checkIEhasPdfReader() {
+    var bool = false;
+    if (hasReader() || hasReaderActiveX()) {
+        bool = true;
+    } else {
+        $.error($.i18n.get("dyjcts")/*"未检测到Adobe Reader，请安装,否则可能会无法正常打印!"*/, function () {
+        });
+    }
+    return bool;
+};
+
+
+function hasReader() {
+    var i,
+        n = navigator.plugins,
+        count = n.length,
+        regx = /Adobe Reader|Adobe PDF|Acrobat/gi;
+    if (count > 0) {
+        for (i = 0; i < count; i++) {
+            if (regx.test(n[i].name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+};
+
+function hasReaderActiveX() {
+    var axObj = null;
+    if (window.ActiveXObject) {
+        axObj = createAXO("AcroPDF.PDF");
+        if (!axObj) {
+            axObj = createAXO("PDF.PdfCtrl");
+        }
+        if (axObj !== null) {
+            return true;
+        }
+    }
+    return false;
+};
+
+function createAXO(type) {
+    var ax;
+    try {
+        ax = new ActiveXObject(type);
+    } catch (e) {
+        ax = null;
+    }
+    return ax;
+};
+
+
+/**级联方法开始*/
+var map = {};
+map["xb_id"] = $.founded($("#xb_id").val())?$("#xb_id").val():"";
+map["kkxb_id"] = $.founded($("#kkxb_id").val())?$("#kkxb_id").val():"";
+map.mapper = {"jg_id_cx": "jg_id", "zyh_id_cx": "zyh_id", "zyfx_id_cx": "zyfx_id", "bj_cx": "bh_id", "njdm_cx": "njdm_id", "x_id_cx": "x_id", "xb_id":"xb_id", "kkxb_id":"kkxb_id", "kkbm_id_cx":"kkbm_id"};
+// $.bindChangeEvent("#jg_id_cx", "#x_id_cx", "#zyh_id_cx", "#zyfx_id_cx", "#bj_cx", "#njdm_cx", map, function () {
+// }, $.i18n.jwglxt["qb"]/*"全部"*/, true);
+$.xbChangeEvent("#xb_id","#jg_id_cx", "#x_id_cx", "#zyh_id_cx", "#zyfx_id_cx", "#bj_cx", "#njdm_cx", map,function(){},"全部",false,{dataType: '10'});
+$.xbChangeEvent("#kkxb_id","#kkbm_id_cx","","","","","", map,function(){},"全部",false,{dataType: '4'});
+/**级联方法结束*/
+
+//绑定体育项目级联事件
+$("#x_id_cx").change(function () {
+    var x_id = $("#x_id_cx").val();
+    var jg_id = $("#jg_id_cx").val();
+    jQuery.ajaxSetup({async: false});
+    var html = [];
+    $.getJSON(_path + "/cjcx/cjcx_cxTyxmList.html", {"x_id": x_id, "jg_id": jg_id}, function (data) {
+        html.push('<option value="">'+$.i18n.jwglxt["qb"]+'<!--全部--></option>');
+        if ($.founded(data)) {
+            $.each(data || [], function (i, rowObj) {
+                html.push('<option ');
+                html.push(' value="' + rowObj["dm"] + '" >' + rowObj["mc"] + '</option>');
+            });
+        }
+    });
+    $("#tyxm_id_cx").empty().append(html.join(""));
+    $("#tyxm_id_cx").trigger("chosen:updated");
+    jQuery.ajaxSetup({async: true});
+});
+$("#jg_id_cx").change(function () {
+    var x_id = $("#x_id_cx").val();
+    var jg_id = $("#jg_id_cx").val();
+    jQuery.ajaxSetup({async: false});
+    var html = [];
+    $.getJSON(_path + "/cjcx/cjcx_cxTyxmList.html", {"x_id": x_id, "jg_id": jg_id}, function (data) {
+        html.push('<option value="">'+$.i18n.jwglxt["qb"]+'<!--全部--></option>');
+        if ($.founded(data)) {
+            $.each(data || [], function (i, rowObj) {
+                html.push('<option ');
+                html.push(' value="' + rowObj["dm"] + '" >' + rowObj["mc"] + '</option>');
+            });
+        }
+    });
+    $("#tyxm_id_cx").empty().append(html.join(""));
+    $("#tyxm_id_cx").trigger("chosen:updated");
+    jQuery.ajaxSetup({async: true});
+});

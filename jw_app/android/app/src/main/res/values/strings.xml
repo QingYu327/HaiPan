@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">海畔</string>
+    <string name="widget_desc">今日课表与考试倒计时，随桌面大小自适应</string>
+    <string name="widget_desc_only">仅显示今日课表，随桌面大小自适应</string>
+    <string name="widget_label_full">课表 + 考试</string>
+    <string name="widget_label_only">今日课表</string>
+    <string name="shortcut_widget">添加小组件</string>
+    <string name="shortcut_widget_long">添加今日课表小组件</string>
+</resources>

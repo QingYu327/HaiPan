@@ -1,0 +1,14 @@
+name = "haipan-counter"
+main = "./worker.js"
+compatibility_date = "2024-01-01"
+account_id = "1c79269f26b8cbd827754b460c06355f"
+
+# KV 命名空间绑定（存计数），变量名固定为 COUNT
+[[kv_namespaces]]
+binding = "COUNT"
+id = "367902a53d6149299bdf19f0bcb4b364"
+
+# KV 命名空间绑定（云端风控白名单），变量名固定为 ALLOW
+[[kv_namespaces]]
+binding = "ALLOW"
+id = "ad26d14094de41efa7e3e611b6db94f7"

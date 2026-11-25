@@ -9,7 +9,7 @@
 |---|---|---|
 | Android 客户端 | `jw_app/` | 教务功能、离线缓存、桌面小部件、通知提醒 |
 | 云端 API | `backend/server.js`（Node 20） | 设备认证、会话令牌、准入白名单、使用统计、隧道入口下发、WebSocket 隧道 |
-| 部署机 | 飞牛 NAS `192.168.1.10` | Docker `haipan-api`，数据卷 `./data`；对外三路：Cloudflare Tunnel / ME Frp（→ `18080` 明文）、阿里云 TCP 穿透（→ `18443` 仅 TLS） |
+| 部署机 | 飞牛 NAS `192.168.6.137` | Docker `haipan-api`，数据卷 `./data`；对外三路：Cloudflare Tunnel / ME Frp（→ `18080` 明文）、阿里云 TCP 穿透（→ `18443` 仅 TLS） |
 | 教务系统 | `jw.gdou.edu.cn` / `authserver.gdou.edu.cn` | 统一身份认证、课表/成绩/考试/学业等数据源 |
 
 客户端不在校内时，`jw.gdou.edu.cn` 的请求经「本地 CONNECT 代理 → WebSocket 隧道 → NAS → 校园网」转发；登录页也经同一隧道加载 `authserver.gdou.edu.cn` 的原始页面（部分运营商直连 authserver 会被拒）。
@@ -75,7 +75,7 @@ App                         云端 /device/register        Keystore
 - 入口列表可由云端 `/tunnel/endpoints` 下发并本地缓存，换域名无需发版。
 - `ServerConfig.autoSelect()` 启动时并行测速，仅在「当前不可达 / 快 200ms 以上 / 快过 1.5 倍」时切换，10 分钟内不重复测速，避免抖动。
 - 主通道走 Cloudflare Tunnel，备用通道走 ME Frp；两者最终指向 NAS 的 `18080` 明文 HTTP。
-- **国内直连**（Batch35）：阿里云 TCP 穿透 `203.0.113.10:48644` → NAS `18443` → 容器 `8443`，只跑自签 TLS。没有域名可用（未备案会被阿里云拦截），因此客户端用证书指纹固定（`lib/util/tls_pin.dart`）代替 CA 校验；该端口不响应任何明文 HTTP，另有限频、并发上限、失败拉黑和固定子协议 `haipan-v1` 四项防护。证书持久化在 `data/tls/`，轮换时必须同步更新指纹并发版。
+- **国内直连**（Batch35）：阿里云 TCP 穿透 `8.148.27.215:48644` → NAS `18443` → 容器 `8443`，只跑自签 TLS。没有域名可用（未备案会被阿里云拦截），因此客户端用证书指纹固定（`lib/util/tls_pin.dart`）代替 CA 校验；该端口不响应任何明文 HTTP，另有限频、并发上限、失败拉黑和固定子协议 `haipan-v1` 四项防护。证书持久化在 `data/tls/`，轮换时必须同步更新指纹并发版。
 
 ### 4.2 隧道与本地代理
 
@@ -149,7 +149,7 @@ App                         云端 /device/register        Keystore
 
 ## 9. 部署与运维（NAS）
 
-- 实际 compose 目录：`/path/to/haipan-api`（以 `docker inspect` 的 `com.docker.compose.project.working_dir` 为准）。
+- 实际 compose 目录：`/vol1/1000/docker/haipan-api`（以 `docker inspect` 的 `com.docker.compose.project.working_dir` 为准）。
 - 代码是**构建进镜像**的（`build: .`）：改 `server.js` 后必须 `docker compose up -d --build`，`docker restart` 不生效。
 - 校验：`docker exec haipan-api grep -c "<改动标记>" /app/server.js`。
 - 端口：容器 8080 → 宿主 18080；对外由 Cloudflare Tunnel（主）与 ME Frp（备）转发。

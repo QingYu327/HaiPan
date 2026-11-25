@@ -11,6 +11,546 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-26 · Batch76：定位确认「每跳 4–5s」= 容器 DNS，并补 App 侧计时探针（build 4136）
+
+### 结论（推翻中间误判）
+- 真机 5G 实测隧道端到端：`隧道心跳 RTT 46ms / 90ms`，每条子流
+  `建流→首包 52–94ms`，`通道+认证页就绪 831ms`（Batch73 前是 4811ms）。
+- 服务端容器内冷连接探针（8 次新建 TCP+TLS）：DNS 2ms、TCP 4–5ms、
+  首字节 28–30ms；出口 `/health`：东莞 5G 202ms、深圳 141ms、
+  国内直连 322ms、Cloudflare 900–2000ms；同一条连接连发 8 次 39–99ms/次。
+- 因此 4–5s/跳确实来自 **每条新连接一次 Docker 默认 DNS 转发（2s×2 重试）**，
+  Batch75 的修复有效。此前「容器内 DNS 只有 8ms，所以 DNS 不是瓶颈」的测量
+  是在修复之后做的，结论作废。
+
+### 改动（`jw_app`）
+- `campus_tunnel.dart`：mux 连上立刻发一次心跳，日志输出 `隧道心跳 RTT`；
+  每条子流记录 `建流→首包` 耗时；`复用建立` 带建流耗时。
+- `jw_client.dart`：`POST/GET … → 状态（xxms）` 带请求总耗时。
+- 探针均为 D 级日志，成本可忽略，后续定位链路问题直接用。
+
+### 验证
+- `dart analyze lib`：No issues found；release arm64 构建通过，真机已装 4136。
+- 全新 5G 登录日志（01:18:44）：机器耗时约 6s（就绪 0.8s + 换票 2s + 数据 3s），
+  其余为人工操作：点「发送验证码」→ 5s、输入短信验证码 → 8s，非代码问题。
+
+## 2026-11-26 · Batch75：隧道服务端 DNS 缓存（极大缩短每跳延迟）
+
+### 依据
+- 本机直连教务：`jw` 首字节 74ms、`authserver` 45ms（DNS 17–42ms）。
+- 经隧道：每条请求固定 4.8s。两者差两个数量级，不是线路 RTT，而是**每条新连接
+  都做了一次慢解析**（Docker 默认 DNS 转发常见 2s×2 重试 ≈ 4s），
+  Node 的 `net.connect({host})` 每次连接都会触发 getaddrinfo。
+
+### 改动（`backend/server.js`、`backend/docker-compose.yml`）
+- 进程级 `dns.lookup` 缓存（TTL 10 分钟，命中走 nextTick，不阻塞事件循环）；
+  `all`/IPv6 语义的调用原样透传，避免改变行为。
+- compose 给容器显式指定 `dns: 223.5.5.5 / 119.29.29.29`，双保险。
+
+### 部署
+- 需在 NAS 上重建容器：`docker compose up -d --build`。
+- 若 NAS 所在网络不允许公共 DNS，可删掉 compose 里的 `dns:` 两行，仅靠进程缓存。
+
+### 验证
+- `node --check backend/server.js` 通过。
+- 已在 NAS 重建容器（`docker compose up -d --build`），`/health` 正常。
+- 真机复测见 Batch76：每跳 4–5s → 首包 52–94ms，判断成立。
+
+## 2026-11-26 · Batch74：认证跳转自动升 https，少一跳明文（build 4135）
+
+### 现象
+日志里认证 302 的 Location 是 `http://authserver.gdou.edu.cn/...`，客户端照跟，
+多出 `authserver.gdou.edu.cn:80 #4` 一条连接（约 4–5s），且认证 Cookie 会走明文。
+
+### 改动
+- `_followRedirects` 跟随前统一 `_upgradeHttp`：`*.gdou.edu.cn` 的 `http://` 一律升级为
+  `https://`，并去掉 80 端口。
+
+### 验证
+- `dart analyze lib` 无问题；release arm64 构建成功，真机已装 4135；桌面留档
+  `海畔_1.0.1_4135.apk`。
+- Batch73 复测：通道+认证页就绪 **21205ms → 4811ms**，首屏并发 **5 条 → 2 条**。
+
+## 2026-11-26 · Batch73：登录请求并发合流，消除重复拉取（build 4134）
+
+### 诊断结论（4133 加了 stream 存活日志）
+- 日志显示每条隧道流都活到约 24–27s 才由上游正常关闭，**不是隧道主动断**；
+  连接没被复用的真正原因是**同一时刻并发打了 5 条连接**（00:25:42 #4–#8），
+  把高延迟隧道堵住，认证页就绪从 5s 拖到 21s、密码校验 30s。
+- 次要原因：`_preload` 在隧道未就绪时就去拉认证页，失败后重试；`warmUp` 在登录
+  期间还在抢带宽（日志里预热 20s 超时）。
+
+### 改动
+- `CasAuthApi.prepare()` 增加在飞合并（`_prepareFuture`）：预检与提交同时触发只发一次请求。
+- `checkNeedCaptcha` 先等在飞的 prepare，避免并发再开一条连接。
+- `_preload` 与 `_submit` 都改为**先网络、后认证页**：隧道没就绪时并发拉取必然失败重试。
+- `CampusTunnel.adapt(..., warm: false)`：登录页不再触发预热；启动路径仍预热。
+
+### 验证
+- `dart analyze lib` 无问题；release arm64 构建成功，真机 `d4b532b4` 已装 4134；
+  桌面留档 `海畔_1.0.1_4134.apk`。
+- 待复测：`认证页就绪` 应由 21s 降到 5s 左右，并发连接数由 5 条降到 1–2 条。
+
+## 2026-11-25 · Batch72：公网登录提速——连接池/换票/端口残留（build 4132）
+
+### 1. 连接复用（`jw_client.dart`、`cas_auth.dart`）
+- 教务与认证两个 Dio 统一连接池参数：空闲 120s、单域并发 6（教务 8）、连接超时 10–15s。
+- 认证侧原来空闲 60s，登录链路多次跳转容易断连重握手，已对齐到 120s。
+- 说明：Dart `HttpClient` 本身默认 keep-alive，本次把参数对齐到上限；日志里「每跳 4–5s」说明上游仍在关连接，需看 NAS 隧道服务端代码（不在本仓库）。
+
+### 2. 多因子后只换一次票（`cas_auth.dart`）
+- 删除「按候选 service × 2 种 URL」的探测循环（最多 6 次请求），改为固定一次
+  `GET /authserver/login?service=<jw sso>`（服务端下发 redirect 时优先用它），失败只原样重试 1 次。
+- 日志证据：23:38:38 一次 `Connection closed` 就导致整条链路重走，单次重试 ~12s；改后重试只重复一次请求。
+
+### 3. 端口残留（`jw_client.setProxyPort`、`cas_auth.setProxyPort`、`adapt`）
+- 两个客户端都支持 `force` 重建连接池；隧道**新建**时强制换 adapter。
+- 根因：隧道重启后端口号可能复用，旧的空闲 socket 指向已关闭监听口，复用时直接 `Connection refused`（日志 `port=33408` 那类）。旧逻辑「端口相同就跳过」正好踩中。
+
+### 验证
+- `flutter analyze` 无问题；`flutter test` 3 项通过。
+- release arm64 构建成功，真机 `d4b532b4` 已装 4132；桌面留档 `海畔_1.0.1_4132.apk`。
+
+## 2026-11-25 · Batch71：修复非白名单被误报为「网络错误」（build 4131）
+
+### 根因
+两处吞错叠加，把业务拒绝降级成了网络失败：
+1. `_configureNetwork` 的兜底 `catch (e) => AuthException(_tunnelError(e))` 会把内部抛出的 `AuthException` 一起改写成「网络连接失败」（`_tunnelError` 只认 `DioException`，其它一律网络错误）。
+2. `checkAllowed` 里 403 被 `catch` 静默跳过；`_connectMux` 把各入口的 `AccessDeniedException` 收进 `last` 后抛 `StateError('$last')`，异常类型丢失。
+
+### 修复
+- 新增 `AccessDeniedException(code, message)`（`not_allowed` / `device_mismatch`）。
+- `_authenticateAt`：注册接口 403/409、以及「200 + error 字段」两种拒绝形态都转成 `AccessDeniedException`；`_authenticate` 遇到业务拒绝立刻上抛，不再逐个入口重试。
+- `checkAllowed`：gates 明确 `app=false` 时抛业务异常；结构不认识时不拦。
+- `_connectMux`：业务拒绝不再被 `last` 吞掉。
+- `_configureNetwork`：`on AccessDeniedException` / `on AuthException` 先接住并原样上抛，只有真正的连接异常才落到「网络失败」。`_friendly` 同步识别该异常。
+
+### 验证
+- `flutter analyze` 无问题；release arm64 构建成功（23.0MB），真机 `d4b532b4` 已装 4131；桌面留档 `海畔_1.0.1_4131.apk`。
+- 预期表现：非白名单学号提交后弹灵动岛「无权限登录 / 该学号未加入白名单」，不再出现网络错误。
+
+## 2026-11-25 · Batch70：自建页准入校验轻量化 + 废弃 wfw 分支瘦身（build 4130）
+
+### 自建页白名单校验（`lib/ui/login/login_page.dart`、`lib/api/usage_api.dart`）
+- 自建页不再弹学号验证窗口：非白名单只弹灵动岛「无权限登录」。学号窗口只保留在认证网页里（没有其他拦截手段时使用）。
+- 新增 `UsageTracker.checkAllowed(xh)`：只把学号交给设备会话接口换一个放行结果，不发账号密码、不建完整登录态，返回 bool。替换原来提交前的 `tokenFor` 全流程。
+- 校验接口不可达时不拦登录（记录日志后继续），避免网络抖动误挡用户。
+
+### 瘦身：删除已废弃的官方通道分支
+- `login_page`：删除 `_wfwLogin`/`_wfwRetried`、`loginWithWfw` 分支、官方通道换票重试块、`client.wfwMode` 回退（约 60 行）。
+- `cas_auth`：删除 `useWfw()`、`clearWfwCookies()`、`landedOnJw`、`_service`/`_loginUrl` 可变字段、`_wfwService/_wfwHost/_wfwBase` 常量与全部 wfw 分支；`prepare()` 少一次网关入口往返。
+- 保留：`SsoLoginPage(wfw:)` 与 `JwClient.enableWfw()`（认证网页的官方通道能力，当前无入口、不启用）。该文件不在版本控制内，300+ 行改写没有回滚兜底，且处于登录主链路，暂不动。
+
+### 回环测试
+- `flutter analyze` 无问题；`flutter test` 3 项通过。
+- release arm64 构建成功（22.9MB），真机 `d4b532b4` 覆盖安装 4130 并启动；冷启动进入登录页正常渲染，无崩溃。
+- 桌面留档 `海畔_1.0.1_4130.apk`。
+- 完整登录回环（密码 + 企业微信验证码 + 拉课表）需人工过验证码，未自动执行。
+
+## 2026-11-25 · Batch69：登录提示全部接入灵动岛 + 非白名单弹学号窗（build 4129）
+
+### 登录页（`lib/ui/login/login_page.dart`）
+- 删除页面内的小字错误位（原 `_error` 文本条）；`_error` 改为只写不读的 setter，赋值即通过 `showInkNotice` 弹灵动岛。调用点零改动，覆盖：空学号/空密码/空验证码、验证码要求、登录失败、发码失败、多因子校验失败等全部提示。
+- 多因子切换时补一条灵动岛提示（原先是表单里的小字说明），并移除该小字。
+- **非白名单（403 not_allowed）**：不再只显示一行字。识别到「白名单 / 无权限 / not_allowed」后，弹灵动岛「无权限登录」，并直接弹出学号验证窗口（`askStudentId`）让用户换号重试。
+
+### 学号验证窗口（`lib/ui/login/sso_login_page.dart`）
+- 弹窗保留（`_XhDialog`），并暴露公共入口 `askStudentId(context)`，原生登录页与认证网页共用同一套交互。
+
+### 统一接入检查
+- 全仓已无 `SnackBar` / `ScaffoldMessenger`；`ui/` 下除弹窗正文外，不再有 `Text('请…')` 形式的行内提示。
+- 登录卡片副标题「使用学号与密码直接登录教务」属于区块说明而非流程提示，保留。
+
+### 验证
+- `flutter analyze` 无问题；`flutter test` 3 项通过。
+- release arm64 构建成功（23.0MB），已装到真机 `d4b532b4`（versionCode 4129）并启动；桌面留档 `海畔_1.0.1_4129.apk`。
+
+## 2026-11-25 · Batch68：通道/拉取提速 + 登录入场收敛 + 开发残留清理（build 4128）
+
+### 通道检测与拉取（`lib/util/campus_tunnel.dart`、`lib/api/jw_client.dart`）
+- 直连探测 4s → **1.8s**：校内到教务是同网段握手（正常 100ms 内），1.8s 足够覆盖弱 Wi-Fi；校外则更快失败切隧道，冷启动最多少等 2.2s。
+- 新增统一 `_adapter(proxyPort)`：直连与隧道共用同一套连接池参数——空闲连接 120s、单域并发 6、连接超时 10s。原来**直连模式用的是裸 `IOHttpClientAdapter()`**，空闲 15s 就断，翻页要重新握手，这是校园网下拉取偏慢的一个隐性原因。
+- 隧道并发 4 → 6，方案抓取与当前页面并行时不再互相排队。
+
+### 登录（`lib/ui/login/login_page.dart`）
+- 入场动画 280ms → **200ms**：登录页是用户最急着操作的界面，先给可点击的稳定画面。
+- 页面跳转维持现状（冷启动 → 登录页一屏；认证网页仅在需要时 push 一层），未增加任何中转页。
+
+### 清理
+- 删除 `api-captures/`（30 个 2026-11-22 抓包样本：JSON/HTML/PDF）与 `tools/`（抢课脚本及输出）。二者均为开发期探针，不参与构建。
+- 临时登录探针脚本（`jw_app/tool/wfw_probe.dart`，含明文测试账号）已在上一步删除，`lib` 内无硬编码账号/密码。
+- `jw_app/test/` 保留（仅设计令牌单测，不打包进 APK）。
+
+### 验证
+- `flutter analyze` 无问题；`flutter test` 3 项通过。
+- `flutter build apk --release --target-platform android-arm64` 成功，22.9MB；已复制到桌面 `海畔_1.0.1_4128.apk`。
+
+## 2026-11-25 · Batch67：官方 wfw 两段式登录实测结论（不启用，维持 NAS 通道）
+
+### 范围
+- 仅调研与文档，**不改业务代码**；临时验证脚本（`tool/wfw_probe.dart`，含明文测试账号）验证完已删除。
+- 文档：`docs/PROJECT.md` 8.1 重写为实测结论。
+
+### 实测过程（命令行 Dart + 真实账号 + 3 次企业微信验证码）
+- 第一段：`GET authserver/login?service=https%3A%2F%2Fwfw.gdou.edu.cn%2F` → 取盐 → POST 密码 → `302 reAuthLoginView.do`（该账号每次登录强制多因子）→ 发码 → `reAuthSubmit.do` 返回 `reAuth_success`。
+- 第二段：`GET wfw/authserver/login?service=https%3A%2F%2Fjw.gdou.edu.cn%2Fsso%2Fjziotlogin` → 第二套盐 → POST 密码 → 再次多因子 → `reAuth_success`。
+
+### 关键决策与原因
+- **认证接口必须用归一化地址** `https://wfw.gdou.edu.cn/authserver/...`：wfw 下发的 `JSESSIONID`/`route` 是 `Path=/authserver`，带 `/https://authserver.gdou.edu.cn` 前缀的请求带不上 Cookie，会导致每个请求都重置会话（第三方仓库 `normalizeWfwAuthUrl` 同因）。修正后会话确实保持，但票据仍未签发。
+- **结论：官方通道不启用**。两次 `reAuth_success` 之后 `authserver/login?service=...` 仍回多因子页（直连与 wfw 代理一致）；`wfw/https://jw.gdou.edu.cn` 的 302 指向裸 `jw.gdou.edu.cn`，校外不可达，套回前缀则无限 302。
+- 成本对比：官方通道需 2 次密码 + 2 次人工验证码且仍失败；自建 NAS 隧道 1 次密码 + 1 次验证码即可。**NAS 继续作为校外唯一通道**，wfw 代码保留但不启用。
+
+### 验证
+- 未改业务代码，无需 `flutter analyze` / `flutter test`；版本保持 `1.0.1+4127`。
+
+### 补充：WebView 路径的机制已确认（模拟器实测）
+- 在模拟器 debug 包中把「使用认证网页登录」临时指向 `SsoLoginPage(wfw: true)`，WebView 能正常渲染 wfw 的 CAS 登录页与多因子页（企业微信发码成功），说明**第一段在浏览器里完全可行**。
+- 关键机制：wfw 代理出的第二段登录页表单 `action="/authserver/login"`（相对 wfw 根路径），浏览器提交时落在 `wfw.gdou.edu.cn/authserver/login`，`Path=/authserver` 的 `JSESSIONID` 才随请求带上——这正是手工 HTTP 拼前缀路径失败、浏览器可行的地方。
+- 因此把 `sso_login_page.dart` 的 wfw 入口改为 CAS `service=https://wfw.gdou.edu.cn/`，第一段完成后自动导航到 `wfw/https://jw.gdou.edu.cn` 让页面自行完成第二段；`_isPostLoginJw` 对应的前缀判定同步放宽。
+- 未完成端到端验证（第二段多因子后能否进教务门户）：adb 驱动 WebView 不稳定（输入法浮层、返回键会直接弹出路由、进程重启丢失会话），验证码多次过期。**该入口未在 UI 上启用**，`_openSso()` 仍走普通通道，行为无变化。
+
+### 遗留
+- 若学校后续调整 CAS 的二次认证策略（例如允许可信设备免二次认证），可重新用 `normalizeWfwAuthUrl` + 两段式再验证一次；在此之前不再投入。
+
+## 2026-11-25 · Batch66：下载灵动岛动效 + 公网加载提速 + 通知后台可达 + 清理临时 Release（build 4127）
+
+### 下载灵动岛（`lib/ui/widgets/ink_notice.dart`）
+- 开始：药丸改为淡入 + 自上而下轻微位移 + 0.92→1 缩放（280ms），不再突然出现。
+- 取消/结束：先播放 180ms 退场动画再移除；退场途中若又开始新下载，自动中止收起并重新出现。
+- 完成/失败：弹一下（1→1.025→1，240ms），状态文案与颜色同步切换。
+- 尺寸：状态切换（下载中→完成/取消）用 `TweenAnimationBuilder<Size>` 做 240ms 平滑过渡；展开/收起时改为逐帧跟随，避免双重缓动拖沓。
+- 进度：进度条与百分比用 380ms 补间，取代原来 600ms 一格一跳；完成时补满、取消/失败保留最后进度，不再出现“失败也 100%”。
+
+### 公网加载提速（`lib/util/campus_tunnel.dart`、`lib/api/jw_client.dart`）
+- `adapt()` 先读网络类型：**仅移动数据时直接建通道**，跳过必然失败、每次要等满 4s 的直连探测；Wi-Fi 仍先试直连（校园网可零通道使用）。
+- 直连探测合并并发调用（`_directProbe`），启动期多处同时 `adapt` 不再各等 4s。
+- 隧道连接池：单域并发 3→4（教务方案抓取占 3 条时仍留 1 条给当前页面），空闲连接 90s→120s，减少重连握手。
+
+### 课程通知后台不触发（`AndroidManifest.xml`、`NotificationHelper.kt`）
+- 根因：Android 13+ 上 `SCHEDULE_EXACT_ALARM` 对新装应用默认不授予，`setAlarmClock()` 抛 `SecurityException` 后降级为非精确闹钟；国产 ROM 深度休眠时非精确闹钟可能一直推迟到 App 回到前台才弹出。
+- 修复：声明 `USE_EXACT_ALARM`（Android 13+ 安装即授予），并在排程前先检查 `canScheduleExactAlarms()`；无权限时才降级，并写入 `HaipanNotify` 日志便于排查。
+- 原有电池优化白名单、MIUI 自启动引导保留。
+
+### 隧道与登录一致性
+- 自建登录页与认证网页登录**共用同一条隧道**（同一本地 CONNECT 代理端口 + `/tunnel-mux` + 同一设备令牌 + 同一目标白名单），认证接口与教务接口完全相同。
+- 差异只在入口：自建页用 `tunnel.adapt()`（Dio 代理 + 4s socket 探测）；认证网页用 `NetworkInfo` 判断蜂窝后直接建通道，Wi-Fi 下先直连、8s 无进展或加载错误再切隧道，并由 `WebViewProxy` 接管 WebView。认证网页失败时同样会回落到同一隧道。
+- 学号验证弹窗只属于认证网页：本地没有已保存学号时才会弹出（`SsoLoginPage._askXh`）；自建页直接用输入框里的学号。
+- 自建页补显式设备认证（`login_page.dart`）：`adapt()` 返回已用隧道后，先 `await UsageTracker.tokenFor(xh)`，白名单未放行/设备换绑会在提交账号前给出明确文案，不再等首次请求才报含糊的网络错误（与认证网页行为一致）。
+
+### 清理临时 Release
+- 删除 GitHub `QingYu327/HaiPan` 上仅用于验证应用内更新的临时 Release（v1.0.2，说明为“本版本仅用于验证应用内更新链路”），更新源恢复为无更高版本状态。
+- 远端 `v1.0.2` 标签仍在（Release 对象已删除，客户端不可见）；如需彻底清理标签需再执行一次带权限的删除。
+
+### 版本与验证
+- `pubspec.yaml` → `1.0.1+4127`；`flutter analyze` 无问题；`flutter test` 3/3 通过；release arm64 构建见下。
+- 真机未连接，通知与动效待真机复验。
+
+## 2026-11-25 · Batch65：反馈模板简化/设备信息自动采集 + 空教室筛选按钮 + 全新状态登录实测（build 4125）
+
+### 意见反馈（`feedback_page.dart`、`app_log.dart`、`MainActivity.kt`）
+- 模板精简：邮件主题改为「【海畔反馈】问题简述」，正文模板只保留「问题描述：」，不再要求用户填写复现步骤、页面、机型系统等。
+- 自动采集：新增原生通道 `deviceInfo`（厂商/品牌/机型/设备代号/Android 版本/SDK/ABI/分辨率/密度/版本号/构建号/语言/时区），`AppLog.exportForFeedback(extraInfo:)` 把信息写在日志文件头「设备与环境（自动采集）」段，导出时自动附带。
+- 说明卡片同步改为「简单描述问题即可，机型系统会自动写入日志」。
+
+### 空教室（`favorite_rooms_page.dart`）
+- 「只看可借」FilterChip：默认透明底 + 发丝描边，点击选中后才填充原来的 `primaryContainer 0.6`，避免未选中时看起来已开启。
+
+### 自建通道白名单结论（未改代码）
+- 仍生效：服务端 `/device/register` 对非 `allow_app` 学号直接 403 `not_allowed`；`/gates` 返回 `app=allow_app(xh)`；管理员账号恒放行。
+- 客户端 `appAccessProvider` 默认拒绝，命中缓存先放行并后台复核；因此移出白名单后「下次启动」生效，已签发的隧道令牌最长约 30 分钟（`SESSION_TTL`）才失效；后端在移出白名单时会同时删除该学号的设备公钥（`allow_app` 变更清理 devices）。
+
+### 全新状态登录实测 + 权威接口核对（校园网/公网真机 d4b532b4，4125）
+- 真机：学号 + 密码 → 多因子页；选择「短信」→ 灵动岛显示验证码 004552 → 「验证并登录」→ 成功进入课表（第 13 周，课程正常）。随后「我的 → 退出登录」回到登录页，账号状态已清。
+- 浏览器侧（edge-cdp，真实页面抓取）：
+  - 登录 POST：`/authserver/login?service=<encoded jw sso>`，字段 `username`、`password`（AES 密文，108 字符）、`captcha`、`_eventId=submit`、`cllt=userNameLogin`、`dllt=generalLogin`、`lt`（空）、`execution=e1s1`。
+  - 验证码检查：`GET /authserver/checkNeedCaptcha.htl`，参数 `username`；验证码图 `/authserver/getCaptcha.htl?<ts>`。
+  - 多因子：`reAuthType=4`（企业微信）；发码 `POST /authserver/dynamicCode/getDynamicCodeByReauth.do`，body `userName=202411413203&authCodeTypeName=reAuthWChatDynamicCodeType`；切换 `POST /authserver/reAuthCheck/changeReAuthType.do`，body `isMultifactor=true&reAuthType=3&service=...`；提交 `POST /authserver/reAuthCheck/reAuthSubmit.do`，成功后跳 `/login?service=<reAuthParams.service>`（取自官方 `reAuth.js`）。
+  - 结论：与现有 `cas_auth.dart` 的路径/参数一致，无需修改。
+- 浏览器测试会话已通过 `/authserver/logout` 注销（页面显示「注销成功」）。
+
+### 验证与产物
+- `flutter analyze` 无问题（改动后）；release arm64 `1.0.1+4125` 构建成功、安装真机；桌面留存 `海畔_1.0.1_4125.apk`。
+
+### 遗留
+- 浏览器 MFA 的 `reAuthSubmit.do` 实际响应未抓到（插件通道下该页 POST 挂起），以官方 `reAuth.js` 的参数与跳转逻辑为准。
+- 空教室「只看可借」仅验证默认态样式，未在查询结果页截图（验证时已退出登录）。
+
+## 2026-11-25 · Batch64：修复 WebView 退出报错 + 按真实抓包校正登录/登出接口
+
+### 客户端：WebView 页面退出框架报错（`lib/ui/login/sso_login_page.dart`）
+- 根因：`_askXh()` 在 `await showDialog` 返回后立刻 `ctrl.dispose()`，而 DialogRoute 还有约 120ms 退场动画，退场中的 `TextField` 继续使用已释放的 `TextEditingController`；异常发生在路由 teardown 阶段，会连带抛出重复 GlobalKey 断言（即交接文档里「GlobalKey / TextEditingController」两类报错）。
+- 修复：新增私有 `_XhDialog` StatefulWidget 持有输入控制器并在自身 `dispose` 释放；`_askXh()` 只负责 `showDialog`。
+- 加固：新增 `_disposed` 标记，`dispose()` 里同时置 `_done=true`；WebView 的 JS Channel、`_prepare/_enableTunnel/_logPageTip/_inspectWfwPage/_maybeAutoFillSubAuth` 等异步入口在页面销毁后立即返回，避免退出转场期间继续 setState / 读控制器。
+
+### 接口校正（浏览器真实抓取，校园网 + 已登录浏览器）
+- 认证登录页（凭据 `credentials: omit` 拉取）：`GET /authserver/login?service=...` 返回 200，表单 `id="pwdFromId" action="/authserver/login"`，隐藏域 `_eventId/cllt/dllt/lt/execution/uuid/rmShown`，`pwdEncryptSalt` 长度 16；验证码接口与 `login.js` 完全一致（`/checkNeedCaptcha.htl`、`/getCaptcha.htl`），现有 `cas_auth.dart` 无需改动。
+- 教务登出：教务首页 `jwglxt_index.js` 绑定 `#exit_btn` →
+  `window.location = _systemPath + "/logout?t=" + jQuery.now() + "&login_type=" + $("#login_type").val()`；
+  本校部署 `_systemPath` 为空，即真实地址 **`/logout?t=<毫秒>&login_type=`**。
+  `curl` 实测：未登录访问返回 `302 → /xtgl/login_slogin.html`；旧的 `/xtgl/login_xxlc.html` 也返回 302，但只是普通业务页，**不会注销会话**。
+- 认证中心登出：`GET /authserver/logout?service=...` 实测 200 / 无会话时正常返回，保留原实现。
+- 代码：`lib/api/auth_api.dart` 退出地址改为 `/logout`（带 `t`、`login_type`，`followRedirects:false`、允许 <500）；`lib/providers/session_provider.dart` 退出顺序改为「先教务 `/logout`、后认证中心 `/authserver/logout`」，避免先清 CAS 导致教务侧无会话可注销。
+
+### 验证
+- `flutter analyze`：No issues；`flutter test`：3/3 通过。
+- 真机 `d4b532b4`（debug arm64）反复「登录页 → 使用认证网页登录 → 系统返回」3 轮，以及「校外弹出填写学号框 → 连续两次返回」均无 Flutter 异常（`logcat` 无 `E/flutter` / GlobalKey / disposed 记录）。
+- 已构建 release arm64 `1.0.1+4124` 并安装真机，桌面留存 `海畔_1.0.1_4124.apk`；因 debug/release 签名不同，验证时卸载重装过一次，本地会话与设置已清空（登录页状态）。
+
+### 遗留
+- 官网登录页隐藏域里另有 `uuid`、`rmShown` 字段，现有提交未携带；实测校园网/隧道登录均能通过（服务端未强制），暂不改动，若后续登录异常再补。
+
+## 2026-11-25 · Batch63：退出登录对接认证注销 + 清理测试入口 + 项目文档
+
+- 官方通道定论：WebVPN（wfw）彻底放弃。纯 HTTP、网关入口、真实 WebView 三种方式均在 CAS 认证成功后被打回登录页，判定为网关不接受第三方客户端会话；企业微信靠应用内身份置换进入，海大课表为自有接入方式，均不可复刻。移除登录页 WebVPN 切换按钮与网页入口按钮，`_wfwLogin` 置为 `final false` 保留分支备查。
+- 退出登录：新增 `CasAuthApi.logout()`（GET `/authserver/logout?service=`）先注销服务端会话再清 Cookie，`sessionProvider.logout()` 改为先调它，避免服务端保留在线记录导致重复登录。
+- 清理：删除桌面/临时目录下的抓包与探针脚本（`*wework*`、`*probe*`、`*monitor*`、`phone_*`）。
+- 文档：新增 `docs/PROJECT.md`（10 章，含架构、登录链路、接口、配置、构建发布、已知问题、接手清单）。
+- 验证：`flutter analyze` 无问题，release arm64 `1.0.1+4121` 构建成功；真机 USB 断开，安装待重连。
+- 遗留：WebView 页面进出时偶发 Flutter GlobalKey / TextEditingController 报错，待修。
+
+## 2026-11-25 · Batch62：考试卡改版 + 官方通道换票失败自动重试（debug）
+
+- 考试卡按「海大课表」样式重做（`exam_page.dart`）：标题 + 考试形式小标签、右侧「还有 N 天」胶囊、独立时间行、整行灰底地点框；去掉原来的「标签+值」多行结构。
+- 官方通道：换票挂回 wfw 登录页时，清空网关 Cookie → 重新 prepare/login → 若仍需多因子则提示重新获取验证码，只重试一次（`cas_auth.clearWfwCookies`、`login_page._wfwRetried`）。
+- 抓包结论：海大课表登录全程只连 authserver 与 wfw（IPv6），不直连 jw，与我们 WebVPN 前缀方案一致。
+- 验证：`flutter analyze` 无问题，debug arm64 构建并覆盖安装。
+
+## 2026-11-25 · Batch61：按「海大课表」的方案实现 WebVPN 登录（认证直连 + 票据受众 wfw）（build 4118）
+
+- 依据（真机抓包 `cn.edu.gdou.schedule`，UID 10419）：启动与登录只连三台校内服务器（jw 210.38.137.108、wfw 网段 210.38.139.201、authserver 210.38.136.93），无第三方后端。
+- 命令行验证：直接向 `authserver.gdou.edu.cn/authserver/login` 提交账号密码、`service=https://wfw.gdou.edu.cn/https://jw.gdou.edu.cn/sso/jziotlogin`，密码校验通过并落到 `reAuthCheck/reAuthLoginView.do`（多因子）。
+- 代码：
+  - `cas_auth.dart`：`_service` 改为实例字段，新增 `useWfw()/useDirect()`；wfw 模式下 `service` 与多因子 `_mfaService` 同步切换；登录/多因子换票成功判定增加 `wfw.gdou.edu.cn` 落点，并新增 `_cookiesAt()` 读取 wfw 域 Cookie。
+  - `login_page.dart`：新增「登录路径：校内直连 / 校外 WebVPN」切换按钮；WebVPN 模式跳过自建隧道，成功后调用 `session.loginWithWfw(cookies)`。
+- 验证：`flutter analyze` 无问题；arm64 release 1.0.1+4118 构建并安装真机。
+- 遗留：待真机完整走一次 WebVPN 登录（含多因子）确认换票与会话建立。
+
+## 2026-11-25 · Batch60：官方通道（wfw）结论定案并移除入口（build 4117）
+
+- 范围：客户端 `login_page.dart`、`sso_login_page.dart`（wfw 代码保留，入口移除）
+- 实测证据（真机，纯公网 / 电信移动数据）：
+  1. wfw 原路径入口可渲染统一身份认证页，账号密码提交成功并拿到票据，回跳 `wfw/https://jw.gdou.edu.cn/sso/jziotlogin` 后仍是登录页（`密码框=1`）；
+  2. 改表单 action 到 jw 前缀 → 白屏；改到 authserver 域前缀 → 命令行复现返回 HTTP 401；
+  3. 企业微信在同一公网环境秒进教务，抓包显示只连 wfw、无 authserver 往返、无 jw 直连。
+- 结论：网关只接受「已认证的会话」，不接受客户端现场登录换票；企业微信能进是其应用内身份/会话所致，自建 WebView 无法复刻。
+- 处理：移除「官方通道（校外 WebVPN）」入口（`_openSso(wfw:true)` 保留，一行可恢复）；主路径仍为自建隧道 + 原生登录。
+- 验证：`flutter analyze` 无问题；arm64 release 1.0.1+4117 构建成功，已 `adb install -r` 真机。
+- 遗留：企业微信那条链路的身份置换细节未知（未拿到登录后的 URL 参数），若日后要复刻需拿到 WeCom 内「复制链接」的完整地址。
+
+## 2026-11-25 · Batch59：wfw 网关改为原路径直通 / 登录后遮罩保持到教务真正就绪（build 4115）
+
+### 官方通道（wfw）重新定位
+- 实测（浏览器 + curl）：
+  - `https://wfw.gdou.edu.cn/xtgl/dl_loginForward.html` 返回的是**经网关转发的统一认证登录页**（标题「统一身份认证平台」，含 `pwdEncryptSalt`），并下发 `WFWSESSID`、`urlss_jw=https://jw.gdou.edu.cn/`。
+  - `https://wfw.gdou.edu.cn/xtgl/...`、`/kbcx/...` 等**教务原路径**都被网关直通到 jw（200 + 登录页/教务页），说明 wfw 是「按原路径代理 jw」的 WebVPN 网关，不是只有 `/https://jw...` 前缀式反代。
+  - `netcheck.gdou.edu.cn/go.php?code=jw` 只是 302 到 `jw.gdou.edu.cn/sso/jziotlogin`，不含任何 WebVPN 逻辑（参考仓库的“自动路由”依赖设备本身能到 jw）。
+  - 之前失败原因判断：前缀式入口 + 票据 service 指向 jw 绝对地址，登录后跳出网关。
+- `lib/api/jw_client.dart`：`wfwJwBase` 由 `https://wfw.gdou.edu.cn/https://jw.gdou.edu.cn` 改为 `https://wfw.gdou.edu.cn`，wfw 模式下教务请求直接走网关原路径。
+- `lib/ui/login/sso_login_page.dart`：官方通道入口改为 `https://wfw.gdou.edu.cn/xtgl/dl_loginForward.html`（带时间戳防缓存）；页面判定从「路径包含 jw.gdou.edu.cn」改为「wfw 域且非 authserver / 非 login 页」；已在教务页（`教学管理信息服务平台`）时不再二次进入入口。
+- `lib/ui/login/login_page.dart`：保留「官方通道（校外 WebVPN）」入口供真机验证。
+
+### 登录后遮罩
+- 登录成功跳回教务（带 ticket 的 `/sso/` 入口或教务内页）时，遮罩继续保持，文案改为「登录成功，正在进入教务系统…」，直到读取到登录态再收起；此前进度条一到 100% 就撤遮罩，用户对着空白教务页等待。
+- 进入教务后 `_tryRead` 同步失败最多等 10 次（约 7s）再放开遮罩，另有 30s 兜底，避免遮罩卡死。
+
+### 版本
+- `pubspec.yaml` 1.0.1+4115；`update_api.dart` 仍为 1.0.1（Release v1.0.2 保留供更新测试）。
+- 验证：`flutter analyze` 无问题；arm64 release 构建成功；**真机安装待用户重新连接 USB**（构建完成后设备已断开）。
+
+### 模拟器复核（同日）
+- 开发机浏览器带登录态且处于校园网，浏览器结论不能代表校外，已写入项目记忆。
+- 模拟器（debug x64，清空数据后）从登录页点「官方通道」：WebView 内正常渲染经网关的「统一身份认证」页（URL `wfw.gdou.edu.cn/xtgl/dl_loginForward.html`），页面脚本里 `service = ["https://wfw.gdou.edu.cn/https://jw.gdou.edu.cn/sso/jziotlogin"]`，说明票据回跳仍在网关内。
+- 修正误判：入口页路径也含 `/xtgl/`，之前被当成「已进入教务」导致遮罩误开、并触发「已登录→重进入口」循环；现登录路径（含 login）一律不算教务页；网关首页也不再被判为已登录，只在停留在 `/` 时补进一次入口。
+- 二次认证自动填充不再要求「先重进入口」才生效。
+
+### wfw 通道最终结论（模拟器实测，已放弃）
+- 网关根路径入口 `wfw/xtgl/dl_loginForward.html`：能正常渲染统一认证页，账号密码提交后确实拿到票据并回跳 `wfw/https://jw.gdou.edu.cn/sso/jziotlogin`，但该地址返回的仍是空表单登录页，票据不被教务域接受。
+- 尝试把登录表单 action 改写到 `wfw/https://jw.gdou.edu.cn/authserver/login`（同一网关会话内提交）：提交后页面直接空白，登录页消失，同样拿不到教务会话。
+- 结论：wfw 网关的 CAS 票据与教务子会话无法在客户端打通，属网关侧集成问题，App 内无法修复。已移除「官方通道（校外 WebVPN）」入口（wfw 内部代码保留，便于日后网关升级后恢复）。
+
+### 原生登录实测（模拟器，校园网直连）
+- 账号密码校验通过，`认证落点` 为 `reAuthCheck/reAuthLoginView.do`，正确进入多因子（type=4 企业微信）。
+- 多因子面板符合预期：企业微信 / 短信可自行切换，「获取验证码」需手动点击，不再自动发码。
+- 耗时：网络通道就绪 1676ms，通道+认证页就绪 2364ms（直连，未走隧道）。
+- 凭证只在内存中用于一次密码校验，未写入任何文件，日志中学号已打码。
+
+## 2026-11-25 · Batch58：下载灵动岛文字完整显示 / 个人信息卡换 App 图标 / 去掉校名 / 版本回 1.0.1（build 4114）
+
+### 下载灵动岛
+- `lib/ui/widgets/ink_notice.dart`
+  - 收起态追加「已下载 / 总大小」（下载中才显示），如 `正在下载 42% · 12.3 MB / 24.0 MB`，不必点开才知道进度明细。
+  - 宽度上限由 `屏宽 - 48` 放宽到 `屏宽 - 32`；文字宽度测量后额外留 6px 余量，消除宽度刚好相等导致末尾出现省略号的问题。
+  - 一行放不下时自动换两行并把药丸高度一起撑开，不再直接截断文字。
+  - 展开态宽度 248 → 300，说明文字（含失败原因）能完整显示。
+
+### 去校名 / 换图标
+- `lib/ui/profile/profile_page.dart`：个人信息卡右侧由 `assets/school_logo.png`（校徽）改为 `assets/app_icon.png`（App 图标）。
+- `lib/ui/profile/about_page.dart`：免责声明「登录通过广东海洋大学统一身份认证完成」改为「登录通过学校统一身份认证完成」；App 内已无校名文字。
+- `pubspec.yaml`：description 去掉校名，改为「海畔 · 教务客户端（非官方）」。
+
+### 版本
+- `pubspec.yaml` 回 `1.0.1+4114`，`update_api.dart` appVersion 回 `1.0.1`；GitHub Release 的 `v1.0.2` 保持不变，供应用内更新测试（1.0.1 会检测到 1.0.2）。
+- 验证：`flutter analyze` 无问题；`flutter build apk --release --target-platform android-arm64` 成功；`adb -s d4b532b4 install -r` 成功，真机 `versionName=1.0.1 versionCode=4114`。
+
+## 2026-11-25 · Batch57：验证码/设备信任流程（build 4113）
+
+- 验证码不是强制显示：进入登录页（有缓存学号）时调用 `checkNeedCaptcha.htl` 查询，服务端说需要才显示验证码框并拉图；不需要则不显示。提交前再查一次（2 分钟内复用结果）。
+- `lib/api/cas_auth.dart`
+  - 认证 Cookie 从内存改为 `PersistCookieJar` 落盘（`cas_cookies`），重启后仍带同一套 CAS 会话/信任 Cookie；会话有效时 `prepare()` 可直接拿到教务 Cookie 跳过密码提交。
+  - 设备指纹 `bfp` 首次随机生成后写入 SharedPreferences 复用，避免每次启动被认证中心当成新设备而反复要验证码 / 多因子。
+  - 新增 `clearCookies()`：更换学号时清空认证会话，避免复用上一个账号的 Cookie。
+- `lib/ui/login/login_page.dart`
+  - 学号与上次登录一致时保留认证会话；不一致才清空。
+  - 服务端返回「不需要验证码」时自动收起验证码输入框（不再一直挂着），并记录日志 `服务端已信任此设备，无需验证码`。
+
+## 2026-11-25 · Batch56：登录提速 / 多因子验证方式手动选择 / 发布 1.0.2 测试更新（build 4112）
+
+### 登录提速（自建页面）
+- 校外进入登录页时，原本先 `tunnel.adapt`（校内直连探测最长等 4s）再拉认证页；现在「建隧道 / 探测」与「直连拉认证页」并行，认证页不再等通道。
+- 同一学号的验证码预检结果缓存 2 分钟，提交时不再重复请求 `checkNeedCaptcha`（省一次隧道往返）。
+- 新增耗时日志：`网络通道就绪 xxms`、`通道+认证页就绪 xxms`、`密码校验 xxms`、`总耗时`，便于后续定位慢点。
+
+### 多因子验证交互
+- 不再默认自动发送企业微信验证码：进入多因子状态后由用户选择「企业微信 / 短信」，再手动点击「获取验证码」。
+- 切换验证方式只更新选择并清空已发送状态；未发送验证码时点「验证并登录」会提示先获取验证码。
+
+### 版本
+- `pubspec.yaml` 1.0.2，`update_api.dart` appVersion 1.0.2，构建号 4112；用于在 GitHub Release 发布 `v1.0.2` 验证应用内更新链路（已安装的 1.0.1 会检测到新版本）。
+
+## 2026-11-25 · Batch55：多因子提交后换票失败 / 官方 wfw 通道登录后不跳转（build 4111）
+
+### 日志结论（`海畔日志_20261125_032927.log.txt`）
+- 原生：`03:26:59` 密码通过后 302 到 `reAuthLoginView.do`（type=4）；`03:27:33 / 03:28:22` 两次 `reAuthSubmit.do` 都是 **HTTP 200**，但随后换票落点不是教务：一次 500、一次回到登录页，最终报「多因子验证未生效」。
+- `reAuthSubmit.do` 是页面里的 AJAX 接口，服务端返回 JSON、不会自带 302；原实现没带 `X-Requested-With`，也没打印响应体，无法判断成功码与后续跳转地址。
+- 官方通道：`03:28:42 / 03:29:04` 两次直接加载 `wfw/https://jw.gdou.edu.cn/sso/jziotlogin` 后再无任何页面事件；深链进入时 wfw 会把登录页渲染在同一路径，登录完成后既不会自动跳转，也因 URL 含 `jw.gdou.edu.cn` 导致「重新进入教务」逻辑永远不触发。
+
+### 修复
+- `lib/api/cas_auth.dart`
+  - 多因子三个接口（切换方式 / 发码 / 提交）补齐 `X-Requested-With: XMLHttpRequest`、`Accept`、`Origin` 与 `Referer`（多因子页地址），并打印发码与提交的响应片段。
+  - `reAuthSubmit` 改为 `followRedirects: false`；成功后解析响应 JSON 里的跳转地址（`url/redirectUrl/reAuthUrl/serviceUrl`），再依次用「服务端跳转地址 → 多因子页 serviceUrl → 登录 service」主动换票；每条候选同时尝试 `authserver/login?service=` 与 service 本身，任何一步落回 jw 域且有 Cookie 即成功。
+  - `_followRedirects` 容忍 5xx（拿到落点交给上层换下一个候选）；新增 `_normalizeService` 还原 `\/`、`\u0026`、整段 URL 编码。
+  - `prepare` 若遇到上次未完成的多因子页，直接接回验证态并抛 `MfaRequiredException`，不再误报「认证页未下发加密参数」。
+- `lib/ui/login/sso_login_page.dart`
+  - 官方通道入口从教务深链改为 `https://wfw.gdou.edu.cn/`：先完成 wfw 自身登录，再自动进入 `wfw/https://jw.gdou.edu.cn/sso/jziotlogin` 建立教务子会话（原深链会停在原地）。
+  - 新增页面诊断日志（密码框 / 多因子 / 教务标记 / 标题）；「重新进入教务」改为页面加载完、**没有密码表单**且 URL 不含 `login` 时才触发，避免把正在输入的登录页顶掉。
+  - 通过 `HpCred` JS Channel 记录用户输入的账号密码（仅内存），wfw 二次认证页出现时自动填充并提交，免重复输入。
+- `lib/api/jw_client.dart`
+  - `probeLoggedIn` 增加统一认证页判定（`pwdEncryptSalt` / `id="pwdFromId"`），避免 wfw 把登录页渲染在教务路径上时被误判为已登录。
+
+## 2026-11-25 · Batch54：原生登录真正根因——POST 302 票据跳转未被跟随（build 4110）
+
+### 日志结论（`海畔日志_20261125_031352.log.txt`）
+- 每次提交后服务端返回「HTTP 302 len=0 @/authserver/login」，App 把 302 当成失败，回落到本地兜底文案「登录失败，请检查学号与密码」，所以用户一直看到「账号密码错误」。
+- 用同一套 AES 算法在 PC 复现：假账号得到 `401 + 登录页(含错误提示)`，说明 401 才是密码错误；302 是**认证通过后带 ticket 跳转教务**。
+- Dart 的 `HttpClient` 对 POST 的 301/302/303 不会自动跟随，导致票据跳转被丢掉。
+
+### 修复（`lib/api/cas_auth.dart`）
+- 新增 `_followRedirects`：手动沿 `Location` 跟随（最多 8 跳，逐跳写日志，隐藏 ticket 查询串），密码登录与多因子提交都改用它。
+- 落点判定改为：落回 jw 域即成功；否则才解析服务端错误文案。
+- prepare 时若认证中心会话仍有效（GET login 直接跳到教务），直接复用教务 Cookie，不再要求密码盐。
+- 保留 Batch53 的 `service` 参数、Origin/Referer、盐值 trim 与响应诊断日志。
+
+### 产物
+- arm64 v1.0.1（versionCode 4110）：`C:\Users\Lime\Desktop\海畔-1.0.1-4110.apk`，23,934,837 字节，sha256 `1401ac5d…15dc`。
+
+## 2026-11-25 · Batch53：按真机日志修原生登录（POST 补 service / Origin / Referer，盐值 trim，失败诊断）
+
+### 日志结论
+- 桌面日志（`海畔日志_20261125_025758.log.txt`）显示三次原生登录都落在 `/authserver/login`，第一次服务端明确回「您提供的用户名或者密码有误」，后两次只回登录页，无多因子页、无验证码提示。
+- 对照学校 `encrypt.js`、`login.js` 与参考项目：原生 POST 少了 `service` 查询参数、`Origin`/`Referer` 头；盐值未 trim（学校脚本会 `trim`）。认证中心按请求里的 service 生成票据，缺省时即使密码正确也会回到登录页。
+
+### 修复（`lib/api/cas_auth.dart`、`MainActivity.kt`）
+- POST 改为 `/authserver/login?service=<encoded>`，并补 `Origin`、`Referer`、浏览器 `Accept`。
+- 加密前对 `pwdEncryptSalt` 做 trim（Dart 与 Kotlin 双端），长度不足 16 位直接提示改用官方通道。
+- 失败诊断日志增强：记录 HTTP 状态、响应长度、最终路径、正文前 160 字；prepare 记录 salt 长度与 execution/lt。
+- 密码错误文案追加「如密码已确认无误，请改用官方通道登录」。
+
+### 产物
+- arm64 v1.0.1（versionCode 4109）：`C:\Users\Lime\Desktop\海畔-1.0.1-4109.apk`，23,934,837 字节，sha256 `2d5c5da7…ff5e`。
+- 若仍失败，新日志会带服务端返回片段，可直接定位是密码解密、验证码还是设备风控。
+
+## 2026-11-25 · Batch52：原生登录补多因子验证；接入官方 wfw 通道；灵动岛动画平滑化；版本回 1.0.1（build 4108）
+
+### 1. 原生登录失败修复（`lib/api/cas_auth.dart`、`lib/ui/login/login_page.dart`）
+- 新增 `MfaRequiredException`：密码提交后若落到 `reAuthLoginView.do` / 页面含 `reAuthParams` / 「多因子认证」，解析 `reAuthUserId`、`reAuthType`（4 企业微信、3 短信）并转入验证码流程，而不是笼统报「登录失败」。
+- 新增 `sendMfaCode`（`changeReAuthType.do` + `getDynamicCodeByReauth.do`）与 `submitMfa`（`reAuthSubmit.do`，通过后再用教务 service 换 CAS 票据拿 jw Cookie），并按参考实现补 `/authserver/bfp/info` 设备指纹。
+- 登录页新增多因子区：企业微信 / 短信分段选择、获取（重新发送）验证码、验证码输入，主按钮变为「验证并登录」；检测到 MFA 时自动按默认方式发一次码。
+- 失败文案补充「非常用账号」「账号临时锁定」，避免全部落到「学号或密码不正确」。
+- 登录前若客户端仍处于 wfw 模式，先 `clearCookies()` 回落直连，避免 wfw 与本地隧道互相干扰。
+
+### 2. 官方通道（学校 WebVPN / wfw，免自建服务器）
+- `lib/api/jw_client.dart`：新增 `wfw` 模式，baseUrl 切到 `https://wfw.gdou.edu.cn/https://jw.gdou.edu.cn`，Cookie 落 `wfw.gdou.edu.cn` 域并用 SharedPreferences 持久化；`setProxyPort` 在 wfw 下直接忽略。
+- `lib/providers/session_provider.dart`：新增 `loginWithWfw`，注入 Cookie 后探针校验，失败回滚。
+- `lib/ui/login/sso_login_page.dart`：新增 `wfw` 入口模式（`SsoLoginPage(wfw: true)`），直接加载 wfw 反代教务入口，不建隧道；登录成功后自动重进一次教务入口建立教务子会话。
+- 轮询门控：wfw 下统一认证页会直接渲染在教务路径上，因此必须等页面加载完成且 DOM 中已无密码表单才开始读 Cookie，否则会在用户输入账号时误判失败（模拟器已复现并修复）；失败容忍从 3 次放宽到 8 次。
+- `lib/ui/login/login_page.dart`：新增「官方通道（校外 WebVPN）」按钮。
+- `lib/util/campus_tunnel.dart`：`adapt` 先 `await client.ready` 再判断 `wfwMode`，wfw 下不建隧道，避免冷启动时误用本地代理。
+
+### 3. 下载灵动岛过渡动画（`lib/ui/widgets/ink_notice.dart`）
+- 放弃 `AnimatedSize` 直接替换子树，改为 `AnimationController` 驱动：宽度/高度/圆角统一插值（easeInOutCubic），收起态与展开态双层叠加，一层淡出缩小、另一层淡入放大，消除展开/收起的跳变。
+- 收起态宽度仍按文字实测贴合，展开固定 248 宽；展开高度预留两行说明，状态刷新时不跳动；展开查看详情时延长自动收起时间到 3.6s。
+
+### 4. 版本与 Release
+- `pubspec.yaml` 回 `1.0.1`，`appVersion` 回 `1.0.1`，构建号 4108（仅变构建号）。
+- 删除 `QingYu327/HaiPan`、`QingYu327/GDOU-APP` 的 `v1.1` 与 `v1.0.2` Release 及对应 tag，两仓库当前最新为 `v1.0.1`；后续未明确要求正式推送时不再新建 Release。
+
+### 5. 验证
+- `flutter analyze` 无问题；`flutter test` 3/3。
+- 模拟器（x64，Android 16）实测：登录页出现「官方通道（校外 WebVPN）」，点击后 WebView 正常加载学校统一身份认证页（含学号/密码/登录按钮），无报错遮罩。
+- 未验证项：真实账号的多因子分支（需用户真机提交后确认短信/企业微信下发的返回结构）。
+
+### 6. 产物
+- arm64 v1.0.1（versionCode 4108，versionName 1.0.1）：23,934,837 字节，sha256 `488f0536db4cecacd13623efaec2f0f8b4e1eb3dc4814de1b4bb775345ccfb84`。
+- 桌面副本：`海畔-1.0.1-4108.apk`。
+
+## 2026-11-25 · Batch51：发布 v1.1（build 4107），用于验证应用内更新
+
+- `appVersion` 与 pubspec 升至 `1.1.0`，构建号 4107。
+- 两个仓库均创建 Release `v1.1`，资产 `haipan-app-release.apk`（23,934,833 字节，sha256 `6eb8e86a932ce98bd3a1d63d9f07a38e9e10f91e58daddf1d97f62cc317e0ee9`），本地与远端 digest 一致。
+- 桌面副本：`海畔-1.1-4107.apk`。
+- 说明：本版仍是「原生登录 + 自建隧道」；wfw（学校 WebVPN）通道尚未接入，作为下一步可选项。
+
+## 2026-11-25 · Batch50：保留更新页波浪进度；灵动岛贴合文字、展开态收敛（v1.0.2 / build 4106）
+
+### 1. 改动
+- `lib/ui/profile/update_page.dart`：恢复 `_WaveProgressBar` / `_WavePainter`；下载中行高仍为 48（与「下载并安装」一致），左侧为带浅色轨道的 12px 波浪进度，右侧原位为「取消下载」按钮，页面内不显示百分比。
+- `lib/ui/widgets/ink_notice.dart`：
+  - 收起态去掉底部整条进度条，药丸宽度随「正在下载 N%」文字自适应。
+  - 展开态固定 248 宽，标题 + 6px 进度条，百分比改为 13 号放在进度条右侧，下方一行「已下载 / 总大小」。
+
+### 2. 回环测试（模拟器 x64 4106）
+- `flutter analyze` 无问题，`flutter test` 3/3。
+- 截图确认：药丸宽度贴合文字；更新页行内波浪进度带轨道、7% 时可见；展开卡片 248 宽，进度条右侧显示「13%」，不再使用 30 号大字。
+
+### 3. 产物
+- arm64 v1.0.2（versionCode 4106）：23,934,837 字节，sha256 `46b4745e348a5ffe58211f29a1f5f674f46888b80216e380bc91468f4205bd70`。
+- 已复制到桌面 `海畔-1.0.2-4106.apk`，供真机远程安装。
+
+## 2026-11-25 · Batch49：原生直连统一身份认证；下载卡片原位取消；灵动岛可展开（v1.0.2 / build 4105）
+
+### 1. 改动
+- 更新页（`lib/ui/profile/update_page.dart`）：下载中不再显示进度卡片，按钮卡片尺寸/位置不变，内容原位换成「取消下载」；页面内不显示百分比；删除已无引用的 `_WaveProgressBar` / `_WavePainter` 与 `dart:math`。
+- 应用内灵动岛（`lib/ui/widgets/ink_notice.dart`）：去掉 `IgnorePointer`，药丸可点击展开/收起；收起态单行文案 + 2.5px 细进度条，展开态（220ms `AnimatedSize`）显示版本、30 号大百分比、6px 进度条与「已下载 / 总大小」。
+- 原生登录（新增 `lib/api/cas_auth.dart`、改写 `lib/ui/login/login_page.dart`、`MainActivity.kt` 新增 `cn.gdou.xiuhong/crypto` 通道）：
+  - 直接 GET 认证登录页并解析隐藏域（execution/lt/cllt/dllt）与 `pwdEncryptSalt`，service 绑定在同一 CAS 会话上。
+  - `checkNeedCaptcha.htl` 判断验证码，`getCaptcha.htl` 取图；全新设备首屏自动展开验证码输入。
+  - 密码按认证页 `encrypt.js` 算法原生 AES-CBC/PKCS7 加密（key=salt，明文=64 位随机前缀+密码，IV 随机 16 位），避免引入 Dart 密码学依赖。
+  - POST 登录后跟随 302 回到教务，从 CookieJar 取出 jw 域 Cookie，交给现有 `loginWithSso` 完成课表拉取与落盘。
+  - 保留「使用认证网页登录」兜底入口；不再冷启动自动弹出 WebView。
+- 版本策略：`appVersion` 与 pubspec 保持 1.0.2，仅构建号递增（本批 4105）。
+
+### 2. 回环测试（模拟器 x64 4105）
+- `flutter analyze` 无问题，`flutter test` 3/3。
+- 原生登录：登录页正常渲染学号/密码表单；提交假账号后直连认证中心返回并展示服务端原文「该账号非常用账号或用户名密码有误」，说明字段、会话、AES 加密与错误解析链路均已打通（无真实账号，成功分支待真机验证）。
+- 用 PowerShell 独立复现已确认：GET 登录页 → AES 加密 POST 返回 401 + 错误文案；`checkNeedCaptcha` 返回 JSON、`getCaptcha.htl` 返回图片。
+- 下载卡片：下载中按钮原位变「取消下载」，页面无百分比；灵动岛收起态「正在下载 N%」，点击展开显示「海畔 v1.0.2 / 31% / 7.2MB · 22.8MB」。
+- 取消后灵动岛显示「下载已取消」并自动消失，按钮恢复「下载并安装」。
+- 已知环境问题：模拟器上本次系统下载在 99.94%（23,919,747 / 23,934,565 字节）停滞且状态非 RUNNING，属 DownloadManager/网络侧未收尾，非 UI 逻辑问题；此前 4104 包下载可正常完成。
+
+### 3. 遗留
+- 需用真实学号在真机验证原生登录成功分支与验证码场景（`checkNeedCaptcha` 服务端按设备/IP 判定，模拟器与 PC 结果不同）。
+- 待发布：arm64 4105 打包后按需替换两个仓库 v1.0.2 资产（versionName 不变，已安装 1.0.2 的用户不会收到更新提示）。
+
 ## 2026-11-25 · Batch48：更新下载进度接入应用内灵动岛；下载卡片改版（v1.0.2 / build 4102）
 
 ### 1. 改动
@@ -86,7 +626,7 @@
   - 「考试方式」改为整宽高亮条：primary 8% 底 + 28% 描边 + 图标，标签小字、值加粗，成为卡片第一视觉层级。
   - 时间/地点/类型改为「图标 + 小字标签 + 加粗值」的三行结构，去掉分隔线与紧凑行距，长文本自动换行对齐；已结束卡片仍整体置灰。
 - `lib/ui/profile/usage_page.dart`：`_RebindSwitch` 卡片补 `margin: bottom InkSpacing.m`，与上下卡片间距一致。
-- `backend/server.js`：同步到 NAS `/path/to/haipan-api/server.js`（先备份 `server.js.bak-before-settings`），`docker compose up -d --build` 重建 `haipan-api`。
+- `backend/server.js`：同步到 NAS `/vol1/1000/docker/haipan-api/server.js`（先备份 `server.js.bak-before-settings`），`docker compose up -d --build` 重建 `haipan-api`。
 
 ### 3. 验证
 - `flutter analyze` 无问题；`flutter test` 3/3；arm64 构建 4097 → `C:\Users\Lime\Desktop\海畔_4097.apk`，已推装真机 `d4b532b4` 并启动无崩溃。
@@ -324,15 +864,15 @@
   - WS 必须带固定子协议 `haipan-v1`（普通浏览器与扫描器握手不成立）；5 秒内未发出 TLS 首字节、10 秒未完成头部一律断开；
   - 明文 HTTP 打到 8443 不返回任何 HTTP 响应（实测 `curl: (52) Empty reply`）。
   - **共享源识别**：所有公网用户都经隧道/Cloudflare → 宿主机端口 → docker-proxy 进容器，容器看到的源地址统一是回环/内网，无法区分个体。这类地址（`isSharedSource`）关闭失败封禁、连接限速放宽到 600/min、并发放宽到 256 条，只断超限的那一条；否则一个扫描器就能把全体用户连坐封禁 10 分钟。真实公网 IP 仍按原阈值处理。
-- `/tunnel/endpoints` 首位固定下发 `DIRECT_TUNNEL`（默认 `https://203.0.113.10:48644`，名称「国内直连」），其余管理员配置按序去重后追加。
+- `/tunnel/endpoints` 首位固定下发 `DIRECT_TUNNEL`（默认 `https://8.148.27.215:48644`，名称「国内直连」），其余管理员配置按序去重后追加。
 - 101 握手在客户端声明子协议时回显 `Sec-WebSocket-Protocol`（Dart 侧缺该响应头会判定握手失败）。
 
 ### 3. 部署（干净容器化）
 - 证书用一次性容器生成并持久化到数据卷，不写入镜像（重建镜像不会改变指纹）：
   `docker run --rm -v .../data/tls:/tls docker.m.daocloud.io/alpine/openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 ... -days 3650`
-  证书 `CN=haipan-tunnel`，SAN 含 `IP:203.0.113.10`，有效期至 2036-11-21。
+  证书 `CN=haipan-tunnel`，SAN 含 `IP:8.148.27.215`，有效期至 2036-11-21。
 - `docker-compose.yml` 增加 `18443:8443` 与 `TLS_PORT`/`DIRECT_TUNNEL`；`Dockerfile` `EXPOSE 8080 8443`。
-- 阿里云 TCP 穿透 `203.0.113.10:48644` 指向 NAS `18443`；备份 `server.js.bak-before-tls`、`docker-compose.yml.bak-before-tls` 后 `docker compose up -d --build`。
+- 阿里云 TCP 穿透 `8.148.27.215:48644` 指向 NAS `18443`；备份 `server.js.bak-before-tls`、`docker-compose.yml.bak-before-tls` 后 `docker compose up -d --build`。
 
 ### 4. 客户端
 - 新增 `lib/util/tls_pin.dart`：只信任固定 SHA-256（DER）指纹，`TlsPin.check` 供 `badCertificateCallback`，`TlsPin.client()` 供一次性请求，`TlsPin.shared()` 供 WebSocket 长连接；系统 CA 正常证书不走该回调，Cloudflare 通道不受影响。
@@ -343,7 +883,7 @@
 ### 5. 验证
 - `node --check backend/server.js` 通过；`flutter analyze` No issues found；`flutter test` 3 项通过。
 - 本机对全新 server.js 起沙箱（临时 `DATA_DIR` + 同证书）跑 8 项端到端：TLS `/health` 200、endpoints 首条为直连、EC 挑战签名换令牌、mux 101 且回显子协议、应用层 PING/PONG、缺子协议被拒、错误令牌 401、明文 HTTP 无响应 —— 全部 PASS。
-- 线上：`curl -k https://203.0.113.10:48644/health` → 200（约 0.29s）；本地 `curl -k https://192.168.1.10:18443/health` → 200；公网取回证书指纹 `7392fdcb…57e877` 与生成值一致，`CN=haipan-tunnel` 说明中间无 TLS 卸载。
+- 线上：`curl -k https://8.148.27.215:48644/health` → 200（约 0.29s）；本地 `curl -k https://192.168.6.137:18443/health` → 200；公网取回证书指纹 `7392fdcb…57e877` 与生成值一致，`CN=haipan-tunnel` 说明中间无 TLS 卸载。
 - 构建：`flutter build apk --release --target-platform android-arm64 --build-number=4086`。
 
 ### 6. 遗留
@@ -386,7 +926,7 @@
 
 ### 1. 问题
 - 名单内学号清空应用数据后，Keystore 生成新密钥，服务端 `/device/register` 返回 `409 device_mismatch`，客户端统一显示“校园通道连接失败”，看起来像网络问题。
-- 实测确认：`2024********`（白名单内、已绑定旧公钥）用新公钥登记返回 409。
+- 实测确认：`202411413202`（白名单内、已绑定旧公钥）用新公钥登记返回 409。
 
 ### 2. 改动
 - 客户端 `usage_api._authenticate`：全部入口失败时保留服务端原始 `DioException` 上抛。
@@ -395,11 +935,11 @@
 
 ### 3. 部署与验证
 - 上传 `backend/server.js` 到 NAS，`docker compose up -d --build` 重建容器；`/health` 正常。
-- 用临时公钥登记 `2024********` 返回 200（旧会话失效），随后用原公钥登记恢复绑定，状态文件确认已还原。
+- 用临时公钥登记 `202411413202` 返回 200（旧会话失效），随后用原公钥登记恢复绑定，状态文件确认已还原。
 - `flutter analyze` 无问题、`flutter test` 通过，构建 2083。
 - 端到端（Pixel_7_API36，清空数据后安装 2083，仅移动数据 5G）：
   - 未白名单学号 `999999999999` → `[E] [通道] 学号验证失败`（403），界面文案「学号验证失败：该学号未加入白名单」，不再显示“连接失败”。
-  - 白名单学号 `2024********` → 1 秒内 `设备认证成功`（说明 `/device/register` 走自动重绑返回 200）→ `复用隧道已连接` → 认证页完整渲染出账号密码表单；服务端日志同步出现 `device rebind 20********02`。
+  - 白名单学号 `202411413202` → 1 秒内 `设备认证成功`（说明 `/device/register` 走自动重绑返回 200）→ `复用隧道已连接` → 认证页完整渲染出账号密码表单；服务端日志同步出现 `device rebind 20********02`。
   - 结论：清空 App 后名单内学号可自动重绑并通过握手，无需管理员介入。
 
 ## 2026-11-24 · Batch32：代码瘦身清理 + 模拟器陌生网络烧机（build 2082）
@@ -647,8 +1187,8 @@
 ### 3. 登录页提示（`lib/ui/login/sso_login_page.dart`）
 - 认证页顶部新增可关闭提示条：「校园网直连体验更佳，公网通道延迟较高。建议先在校园网内完成一次数据同步，之后校外使用会更快。」
 
-### 4. 账号准入核验（2024********）
-- `haipan.json`：`allow_app` 已含 `2024********`，`devices` 有其公钥记录（createdAt 1795437648718）。
+### 4. 账号准入核验（202411413202）
+- `haipan.json`：`allow_app` 已含 `202411413202`，`devices` 有其公钥记录（createdAt 1795437648718）。
 - 容器日志：出现 `mux open 20********02`，说明设备认证握手通过并已使用复用通道。
 - 同期日志 `mux open/tunnel open` 仅 6 条（此前单流模式 163 条），复用通道生效。
 
@@ -684,7 +1224,7 @@
 
 ### 5. 验证与部署
 - `flutter analyze` 无问题；`flutter test` 3 项通过；`node --check backend/server.js` 通过。
-- 后端已上传 `/path/to/haipan-api/server.js`（备份 `server.js.bak-before-mux`），`docker compose up -d --build` 重建容器成功，启动日志正常。
+- 后端已上传 `/vol1/1000/docker/haipan-api/server.js`（备份 `server.js.bak-before-mux`），`docker compose up -d --build` 重建容器成功，启动日志正常。
 - build 2070（arm64，22.7MB）构建成功，已复制 `桌面\海畔_2070.apk`；当前无 adb 设备，待真机验收。
 
 ### 6. 待验证
@@ -748,7 +1288,7 @@
 - 客户端无需改动，也不需重新发包。
 
 ### 3. 部署（关键）
-- 实际 compose 目录为 `/path/to/haipan-api`（不是 `/vol1/1000/docker/haipan`，后者是旧副本）。
+- 实际 compose 目录为 `/vol1/1000/docker/haipan-api`（不是 `/vol1/1000/docker/haipan`，后者是旧副本）。
 - 覆盖前备份 `server.js.bak-before-admin-rebind`；`docker compose up -d --build` 重建容器。
 - 验证：容器内 `grep -c 'admin device rebind' /app/server.js` = 1；`ADMIN` 环境变量正确；未白名单学号探测返回 403，服务正常。
 
@@ -843,11 +1383,11 @@
   - 收藏教室使用情况查询限制 3 页 / 12 秒。
 
 ### 5. 备用入口 haipan-api1 排查（已定位）
-- NAS（Plexus / 192.168.1.10）上运行两套穿透：fnOS 的 Cloudflare Tunnel（主站）与 **ME Frp 客户端**（备用）。
-- ME Frp 日志显示 `haipan` 隧道启动成功，公网地址 `https://api.example.com`，但该隧道协议被设为 **https**，而本地服务是 `127.0.0.1:18080` 的**明文 HTTP**：
+- NAS（Plexus / 192.168.6.137）上运行两套穿透：fnOS 的 Cloudflare Tunnel（主站）与 **ME Frp 客户端**（备用）。
+- ME Frp 日志显示 `haipan` 隧道启动成功，公网地址 `https://haipan-api1.cjhong.top`，但该隧道协议被设为 **https**，而本地服务是 `127.0.0.1:18080` 的**明文 HTTP**：
   `转发请求到本地服务 [127.0.0.1:18080] 失败: tls: first record does not look like a TLS handshake`。
 - 因此 Cloudflare 收到的是 ME Frp 边缘返回的 502。修复：在 ME Frp 控制台把该隧道协议改为 **HTTP**（本地端口 18080 不变），或保留 HTTPS 隧道但在前面加一层带证书的 nginx/Caddy。
-- 已修复并验证（2026-11-23 14:0x）：`https://api.example.com/health` → 200（约 0.43s）；云端 `/tunnel/endpoints` 已同时返回主通道与备用通道，客户端故障切换会自动尝试。
+- 已修复并验证（2026-11-23 14:0x）：`https://haipan-api1.cjhong.top/health` → 200（约 0.43s）；云端 `/tunnel/endpoints` 已同时返回主通道与备用通道，客户端故障切换会自动尝试。
 
 ### 6. 学号备注（管理员）
 - `backend/server.js`：新增 `state.notes`（随 `haipan.json` 持久化）；`GET /notes` 返回全部备注，`POST /notes {xh,note}` 写入/清空（空串删除），均仅管理员会话可读；备注最长 40 字。
@@ -860,7 +1400,7 @@
 
 ### 8. 提醒与运维增强
 - `lib/util/lesson_notifier.dart`：考试当天在自定义提前提醒之外，若提前量 ≥20 分钟，再补一条「即将开考 · 课程」的 10 分钟提醒；两者过近时不重复打扰。提醒 id 仍复用 1000–1499 区间。
-- NAS 运维脚本（`/path/to/haipan-api/ops/`）：
+- NAS 运维脚本（`/vol1/1000/docker/haipan-api/ops/`）：
   - `backup.sh`：每天 03:30 备份 `data/haipan.json` 到 `backups/`，保留 14 天；
   - `healthcheck.sh`：每 5 分钟探测主入口、备用入口、本地 18080 与 mefrpc 进程，仅在状态变化时写 `ops/health.log`，日志超 2000 行自动截断；
   - 已写入 `lime` 用户 crontab（带 `# haipan-ops` 标记，便于移除）。
@@ -871,16 +1411,16 @@
 - `flutter build apk --release --target-platform android-arm64 --build-number=2048`：通过（22.6MB），已安装到真机并复制到桌面 `haipan-2048.apk`。
 - `flutter build apk --release --target-platform android-arm64 --build-number=2049`：在 2048 基础上加入智能选路，构建通过并安装到真机。
 - `flutter build apk --release --target-platform android-arm64 --build-number=2050`：加入考试多段提醒，构建通过并安装到真机。
-- 后端已部署到 NAS（`/path/to/haipan-api`，旧文件备份 `server.js.bak-2048`，`docker compose up -d --build` 重建成功）：
+- 后端已部署到 NAS（`/vol1/1000/docker/haipan-api`，旧文件备份 `server.js.bak-2048`，`docker compose up -d --build` 重建成功）：
   - `http://127.0.0.1:18080/health` → 200
-  - `https://api.example.com/health` → 200，响应头已带 `cache-control: no-store`
+  - `https://haipan-api.cjhong.top/health` → 200，响应头已带 `cache-control: no-store`
   - `/gates` 未带会话 → 401
-  - `/notes` 未带会话 → 401；`https://api.example.com/health` → 200
+  - `/notes` 未带会话 → 401；`https://haipan-api1.cjhong.top/health` → 200
 
 ## 2026-11-23 · Batch12：公网通道可配置 / 上课提醒诊断 / 标题间距
 
 ### 1. 公网入口不再硬编码（多通道 + 故障切换）
-- 新增 `lib/util/server_config.dart`：维护入口列表（默认 `https://api.example.com`），启动先读 SharedPreferences 缓存、后台再向任意可达入口拉取 `/tunnel/endpoints`；提供 `ping()` 延迟探测、`setActive()` 切换、`parseBase()` 输入归一化。
+- 新增 `lib/util/server_config.dart`：维护入口列表（默认 `https://haipan-api.cjhong.top`），启动先读 SharedPreferences 缓存、后台再向任意可达入口拉取 `/tunnel/endpoints`；提供 `ping()` 延迟探测、`setActive()` 切换、`parseBase()` 输入归一化。
 - `lib/util/campus_tunnel.dart`：删除 `_backend` 常量，建隧道时按「当前入口 → 备用入口」依次尝试 WSS；可用则自动切换并持久化，任一入口可达即可用。
 - `lib/api/usage_api.dart`：`_backendUrl` / `_postUrl` 改为读 `ServerConfig.apiBase`；设备认证也按入口列表逐个尝试，成功后切到可达入口；新增 `saveTunnelEndpoints()` 供管理员下发配置。
 - 新增 `lib/ui/profile/tunnel_page.dart`：入口列表（使用中/延迟标签）、全部测速、切换、添加/编辑/删除、保存到云端、从云端同步。
@@ -900,9 +1440,9 @@
 - `flutter analyze`：No issues found；`flutter test`：3 passed。
 - `node --check backend/server.js`：通过。
 - `flutter build apk --release --target-platform android-arm64 --build-number=2043`：通过，22.9MB；已复制到桌面 `haipan-2043.apk`；`adb devices` 为空，未安装。
-- **后端已部署（2026-11-23 11:20）**：`server.js` 上传到 `/path/to/haipan-api/`，旧文件备份为 `server.js.bak-2043`，`docker compose up -d --build` 重建成功。
+- **后端已部署（2026-11-23 11:20）**：`server.js` 上传到 `/vol1/1000/docker/haipan-api/`，旧文件备份为 `server.js.bak-2043`，`docker compose up -d --build` 重建成功。
   - `http://127.0.0.1:18080/health` → `{"ok":true,...}`
-  - `https://api.example.com/health` → `ok=true`
+  - `https://haipan-api.cjhong.top/health` → `ok=true`
   - `GET /tunnel/endpoints` → 1 条主通道；无会话 `POST` → 401（符合预期）
   - 重建后内存会话清空，客户端会按需自动重新认证。
 - **清理 tailscale**：删除未使用的 `tailscale` 容器、镜像及 `/vol1/1000/docker/tailscale` 目录；剩余容器为 haipan-api、ikuuu-hub、qq-napcat、qinglong、homeassistant。
@@ -932,17 +1472,17 @@
 - 复测：本机 Node 起服务跑完整流程（注册/挑战/验签/gates/权限/一次性挑战/管理端），11 项全部通过。
 
 ### 飞牛主机部署记录
-- 主机：`192.168.1.10`，用户 `lime`，系统 Debian 12 + Docker Compose v2.40.3。
-- 目录：`/path/to/haipan-api`（`data/` 为持久化卷，容器内 `node` uid 1000 可写）。
+- 主机：`192.168.6.137`，用户 `lime`，系统 Debian 12 + Docker Compose v2.40.3。
+- 目录：`/vol1/1000/docker/haipan-api`（`data/` 为持久化卷，容器内 `node` uid 1000 可写）。
 - 端口：宿主机 **18080** → 容器 8080，避开已有服务的 8080。
 - Dockerfile 基础镜像改为 `docker.m.daocloud.io/library/node:20-alpine`：飞牛默认镜像源 `docker.fnnas.com` 对 Docker Hub 返回 401。
-- 启动：`cd /path/to/haipan-api && sudo docker compose up -d --build`，容器 `haipan-api`，`restart: unless-stopped`。
+- 启动：`cd /vol1/1000/docker/haipan-api && sudo docker compose up -d --build`，容器 `haipan-api`，`restart: unless-stopped`。
 - 本机验证：`/gates` 返回 401、`/device/register` 空请求返回 400、日志 `haipan api listening on :8080`。
-- 公网：改用新域名 `api.example.com`（原 `api.example.com` 仍绑定旧 Worker 白名单，保留不动）。飞牛隧道应用 `com.dustinky.tunnel` 把新域名指向 `http://127.0.0.1:18080`。
+- 公网：改用新域名 `haipan-api.cjhong.top`（原 `gdouapi.cjhong.top` 仍绑定旧 Worker 白名单，保留不动）。飞牛隧道应用 `com.dustinky.tunnel` 把新域名指向 `http://127.0.0.1:18080`。
 
 ### 验证
 - `flutter analyze` 无问题、`flutter test` 通过、build 2033 / 2034 / 2035 打包成功（22.8MB）。
-- build 2034 把云端地址改为 `https://api.example.com`。
+- build 2034 把云端地址改为 `https://haipan-api.cjhong.top`。
 - build 2035 修复日志导出把级别写成 `Instance of '_LogEntry'` 的插值错误（`[$e.level]` → `[${e.level}]`）。
 - build 2036 二级页去掉只有按钮的空 AppBar，大标题回到左上角，清空/导出与标题同一行右侧。
 - 真机 `d4b532b4` 未连接，未安装；APK 已复制到桌面 `haipan-2036.apk`。
@@ -1240,7 +1780,7 @@
 
 ## 2026-11-22 · 全量重抓 + 以网页为准的数据一致性修复
 - **重抓方式**：用本机 Edge 已登录会话导出 `jw.gdou.edu.cn` Cookie，在 Node 里按正方表单/Referer 规则重放接口，样本全部落到 `api-captures/`（索引见 `api-captures/INDEX.md`）。
-- **重抓结果**（2026-2027-1，账号 2024********）：
+- **重抓结果**（2026-2027-1，账号 202411413203）：
   - 课表 **43 条排课 + 5 条实践课**。早期基准只有 41 条，是因为学校把「机械制造技术」「标准化管理」拆成了多段（如 `9-11周,13-16周` + `第17周`），并非抓取遗漏。
   - 成绩：当前学期 0 条；历史 2025-2/2025-1/2024-2 分别 13/16/16 条，字段与 App 解析一致。
   - 考试 8 条；绩点排名 GPA 3.51、班级第 12；学业 109 门（通过 59 / 在读 31 / 未修 19）、已获 100.5/156 学分，与学业页文案完全一致。
@@ -1525,7 +2065,7 @@
 - `lib/ui/profile/about_page.dart`：作者信息拆为两行 —— 第一行「开发者」，第二行「@机械工程学院」，右对齐顶部一致（左对齐）。
 
 ### 2. 云控模型调整：抢课白名单 + 更新黑名单，调试/统计去云端化
-策略变化：云端只管理「抢课白名单」与「更新黑名单」；「调试」改回「连点版本号 5 次」本地开关；「用户统计」仅管理员账号（2024********）可见。
+策略变化：云端只管理「抢课白名单」与「更新黑名单」；「调试」改回「连点版本号 5 次」本地开关；「用户统计」仅管理员账号（202411413203）可见。
 - 后端 `cf-worker/worker.js`
   - `FEATURES` 缩减为 `select`(抢课白名单)、`update`(更新黑名单)。
   - `ALLOW` KV 的 cfg 同时存白名单 `{"select":[...]}` 与黑名单 `{"block_update":[...]}`。
@@ -1698,7 +2238,7 @@ WebView / Dio → 手机本地 CONNECT 代理 → WSS → 飞牛（校园网内�
 
 ### 2. APP 本地代理（`lib/util/campus_tunnel.dart` 新增）
 - `ServerSocket.bind(127.0.0.1, 0)` 起本地 CONNECT 代理，解析目标 host:port 并与后端同白名单。
-- 每个连接先 `UsageTracker.tokenFor(xh)` 取会话，`WebSocket.connect(wss://api.example.com/tunnel?... , headers: authorization)`；首次失败作废会话并重认证一次。
+- 每个连接先 `UsageTracker.tokenFor(xh)` 取会话，`WebSocket.connect(wss://haipan-api.cjhong.top/tunnel?... , headers: authorization)`；首次失败作废会话并重认证一次。
 - WebSocket 与本地 Socket 双向转发；对方关闭时 `flush()` 后再断开，避免末尾响应被丢弃。
 - 兼容 WebView 的明文请求：绝对 URI（`GET http://host/path`）会还原成源站请求行再转发，覆盖认证页 302 到 `http://authserver` 的回跳。
 

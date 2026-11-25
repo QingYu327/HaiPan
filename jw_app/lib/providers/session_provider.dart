@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/auth_api.dart';
+import '../api/cas_auth.dart';
 import '../api/jw_client.dart';
 import '../api/jw_apis.dart';
 import '../api/usage_api.dart';
@@ -217,6 +218,21 @@ class SessionNotifier extends Notifier<SessionState> {
     await _completeLogin(state.savedUsername);
   }
 
+  /// 官方通道（学校 WebVPN / wfw）登录：Cookie 落在 wfw 域，
+  /// 之后所有教务请求自动改走 `wfw.gdou.edu.cn/https://jw.gdou.edu.cn`。
+  Future<void> loginWithWfw(Map<String, String> cookies) async {
+    AppLog.d('会话', '官方通道回填 Cookie：${cookies.length} 个');
+    final client = ref.read(jwClientProvider);
+    await client.enableWfw(cookies);
+    final ok = await client.probeLoggedIn();
+    if (!ok) {
+      await client.clearCookies();
+      throw AuthException('官方通道未建立教务会话，请重试');
+    }
+    AppLog.d('会话', '官方通道登录成功');
+    await _completeLogin(state.savedUsername);
+  }
+
   /// 是否允许下次冷启动时静默打开认证页续期（主动退出后为 false）。
   Future<bool> canSilentSso() async {
     final prefs = await SharedPreferences.getInstance();
@@ -298,7 +314,11 @@ class SessionNotifier extends Notifier<SessionState> {
 
   Future<void> logout() async {
     AppLog.d('会话', '退出登录');
+    // 先注销教务会话（/logout 依赖当前 jw Cookie），再注销统一身份认证；
+    // 反过来先清 CAS 会话会让教务侧判定失效，/logout 拿不到会话就不生效，
+    // 只清本地则会让服务端保留在线记录，重新登录时出现重复登录
     await ref.read(authApiProvider).logout();
+    await ref.read(casAuthProvider).logout();
     await LessonNotifier.setSessionActive(false);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kAutoSso, false);

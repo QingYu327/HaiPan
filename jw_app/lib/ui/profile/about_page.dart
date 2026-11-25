@@ -237,7 +237,7 @@ class _AboutPageState extends ConsumerState<AboutPage> {
               const SizedBox(height: InkSpacing.m),
               Text(
                 '本应用不会将任何账号、密码、成绩或个人信息存储到服务器，'
-                '仅在设备本地缓存登录状态与教务数据；登录通过广东海洋大学'
+                '仅在设备本地缓存登录状态与教务数据；登录通过学校'
                 '统一身份认证完成，本应用仅提供登录链接入口。',
                 style: context.tsSecondary.copyWith(height: 1.65),
               ),

@@ -723,6 +723,18 @@ class _FavoriteRoomsPageState extends ConsumerState<FavoriteRoomsPage> {
                         selected: _onlyFree,
                         showCheckmark: false,
                         onSelected: (v) => setState(() => _onlyFree = v),
+                        // 默认不填充颜色，仅留发丝描边；点击选中后再填充主色底，
+                        // 避免未选中时看起来像已开启。
+                        backgroundColor: Colors.transparent,
+                        selectedColor: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withValues(alpha: 0.6),
+                        side: BorderSide(
+                          color: _onlyFree
+                              ? Colors.transparent
+                              : context.ink.hairline,
+                        ),
                       ),
                     ],
                   ),

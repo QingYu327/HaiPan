@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -21,6 +22,7 @@ object NotificationHelper {
     const val CHANNEL_NAME = "上课/考试提醒"
     const val ACTION_LESSON = "cn.gdou.xiuhong.action.NOTIFY"
     private const val LEGACY_CHANNEL_ID = "lesson"
+    private const val TAG = "HaipanNotify"
 
     private const val PREFS = "haipan_notify"
     private const val KEY_LESSONS = "lessons"
@@ -146,26 +148,32 @@ object NotificationHelper {
 
     /** 精确闹钟（有权限时）；无权限或受限时退回 allow-while-idle，至少不会丢提醒 */
     private fun scheduleExact(am: AlarmManager, at: Long, pi: PendingIntent) {
+        // Android 13+ 由 USE_EXACT_ALARM 自动授予；未授予时 setAlarmClock 会直接抛
+        // SecurityException，且非精确闹钟在深度休眠下可能一直推迟到 App 回前台，
+        // 所以先判断权限，避免“只有 App 前台才收到提醒”。
+        val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            am.canScheduleExactAlarms()
+        if (!exact) {
+            Log.w(TAG, "exact alarm not permitted, fallback to inexact at=$at")
+            setAllowWhileIdle(am, at, pi)
+            return
+        }
         // 优先按"闹钟"排程：系统视为用户可见闹钟，不受 Doze/应用待机推迟，
         // 国产 ROM（MIUI 等）的后台限制下也比普通精确闹钟更容易准时触发。
         try {
             am.setAlarmClock(AlarmManager.AlarmClockInfo(at, null), pi)
             return
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.w(TAG, "setAlarmClock failed: ${t.javaClass.simpleName}")
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                !am.canScheduleExactAlarms()
-            ) {
-                setAllowWhileIdle(am, at, pi)
-                return
-            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             } else {
                 am.setExact(AlarmManager.RTC_WAKEUP, at, pi)
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.w(TAG, "setExact failed: ${t.javaClass.simpleName}")
             setAllowWhileIdle(am, at, pi)
         }
     }

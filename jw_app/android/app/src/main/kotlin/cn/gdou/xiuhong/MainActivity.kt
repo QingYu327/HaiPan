@@ -207,6 +207,27 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) { "" }
     }
 
+    // ---------- 统一身份认证：密码加密（对应认证页 encrypt.js）----------
+    private val casAesChars = "ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678"
+    private val casRandom = java.security.SecureRandom()
+
+    private fun casRandomString(n: Int): String {
+        val sb = StringBuilder(n)
+        repeat(n) { sb.append(casAesChars[casRandom.nextInt(casAesChars.length)]) }
+        return sb.toString()
+    }
+
+    private fun encryptCasPassword(pwd: String, salt: String): String {
+        val key = javax.crypto.spec.SecretKeySpec(
+            salt.toByteArray(Charsets.UTF_8), "AES")
+        val iv = javax.crypto.spec.IvParameterSpec(
+            casRandomString(16).toByteArray(Charsets.UTF_8))
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, key, iv)
+        val plain = (casRandomString(64) + pwd).toByteArray(Charsets.UTF_8)
+        return Base64.encodeToString(cipher.doFinal(plain), Base64.NO_WRAP)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
@@ -292,6 +313,29 @@ class MainActivity : FlutterActivity() {
                     result.error("AUTH_ERR", e.message, null)
                 }
             }
+        // 统一身份认证：按学校 encrypt.js 同款算法加密密码
+        // 明文 = 64 位随机串 + 密码，AES/CBC/PKCS5Padding，key=salt，iv=16 位随机串
+        // （随机前缀用来吸收 IV 不一致导致的首块损坏，服务端解密后丢弃前 64 位）
+        MethodChannel(messenger, "cn.gdou.xiuhong/crypto")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "aesEncrypt" -> {
+                            val text = call.argument<String>("text") ?: ""
+                            // 学校 encrypt.js 会 trim 盐值，保持一致
+                            val salt = (call.argument<String>("salt") ?: "").trim()
+                            if (salt.isEmpty()) {
+                                result.error("AES_ERR", "empty salt", null)
+                            } else {
+                                result.success(encryptCasPassword(text, salt))
+                            }
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (e: Exception) {
+                    result.error("AES_ERR", e.message, null)
+                }
+            }
         // 校外通道：让 WebView 走本地隧道代理（仅影响本应用的 WebView）
         MethodChannel(messenger, "cn.gdou.xiuhong/proxy")
             .setMethodCallHandler { call, result ->
@@ -375,6 +419,40 @@ class MainActivity : FlutterActivity() {
                             )
                         } catch (e: Exception) {
                             result.error("APPINFO_ERR", e.message, null)
+                        }
+                    }
+                    // 意见反馈：采集机型/系统等环境信息，随日志一起导出，
+                    // 用户不必再手动填写「手机型号与系统」。
+                    "deviceInfo" -> {
+                        try {
+                            @Suppress("DEPRECATION")
+                            val p = packageManager.getPackageInfo(packageName, 0)
+                            val code = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                                p.longVersionCode
+                            } else {
+                                @Suppress("DEPRECATION")
+                                p.versionCode.toLong()
+                            }
+                            val dm = resources.displayMetrics
+                            result.success(
+                                mapOf(
+                                    "manufacturer" to android.os.Build.MANUFACTURER,
+                                    "brand" to android.os.Build.BRAND,
+                                    "model" to android.os.Build.MODEL,
+                                    "device" to android.os.Build.DEVICE,
+                                    "release" to android.os.Build.VERSION.RELEASE,
+                                    "sdk" to android.os.Build.VERSION.SDK_INT.toString(),
+                                    "abi" to android.os.Build.SUPPORTED_ABIS.joinToString(","),
+                                    "screen" to "${dm.widthPixels}x${dm.heightPixels}",
+                                    "density" to dm.density.toString(),
+                                    "version" to (p.versionName ?: ""),
+                                    "build" to code.toString(),
+                                    "locale" to java.util.Locale.getDefault().toString(),
+                                    "timezone" to java.util.TimeZone.getDefault().id
+                                )
+                            )
+                        } catch (e: Exception) {
+                            result.error("DEVICEINFO_ERR", e.message, null)
                         }
                     }
                     // 意见反馈：调起系统邮件客户端（收件人/主题/正文由 Flutter 拼进 mailto）

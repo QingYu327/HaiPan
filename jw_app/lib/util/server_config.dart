@@ -16,7 +16,7 @@ class TunnelEndpoint {
 
   final String name;
 
-  /// 形如 https://api.example.com（不带路径和斜杠）
+  /// 形如 https://haipan-api.cjhong.top（不带路径和斜杠）
   final String base;
 
   /// 由云端下发的默认入口标记（仅管理端指定，本地缓存不参与判断）
@@ -58,7 +58,7 @@ class TunnelEndpoint {
 class ServerConfig {
   ServerConfig._();
 
-  static const String defaultBase = 'https://api.example.com';
+  static const String defaultBase = 'https://haipan-api.cjhong.top';
   static const _kList = 'server.endpoints';
   static const _kActive = 'server.active';
   static const _kAutoAt = 'server.auto_at';

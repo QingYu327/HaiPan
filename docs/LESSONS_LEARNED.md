@@ -63,7 +63,7 @@
 - 验证方式：`docker exec <容器> grep -c "<新代码标记>" /app/server.js`，不要凭“我重启过了”判断。
 
 ### 3.2 部署目录以 compose label 为准
-- 实际目录是 `/path/to/haipan-api`，而同级的 `/vol1/1000/docker/haipan` 是另一份旧副本；改错目录会“怎么重建都不生效”。
+- 实际目录是 `/vol1/1000/docker/haipan-api`，而同级的 `/vol1/1000/docker/haipan` 是另一份旧副本；改错目录会“怎么重建都不生效”。
 - 排查命令：`docker inspect <容器> --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'`。
 
 ### 3.3 覆盖前先备份

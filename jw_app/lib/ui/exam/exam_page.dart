@@ -185,23 +185,12 @@ class _ExamCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = exam.daysLeft;
-    final rows = <Widget>[
-      if (exam.kssj.isNotEmpty)
-        _infoRow(context, AppIcons.time, '考试时间', exam.kssj),
-      if (exam.cdmc.isNotEmpty || exam.cdxqmc.isNotEmpty)
-        _infoRow(
-          context,
-          AppIcons.location,
-          '考试地点',
-          [exam.cdxqmc, exam.cdmc].where((s) => s.isNotEmpty).join(' · '),
-        ),
-      if (exam.ksmc.isNotEmpty)
-        _infoRow(context, AppIcons.verified, '考试类型', exam.ksmc),
-      if (exam.ksfs.isNotEmpty)
-        _infoRow(context, AppIcons.method, '考试方式', exam.ksfs),
-    ];
-
     final ended = days != null && days < 0;
+    final place =
+        [exam.cdxqmc, exam.cdmc].where((s) => s.isNotEmpty).join(' · ');
+    final tag = exam.ksfs.isNotEmpty
+        ? exam.ksfs
+        : (exam.ksmc.isNotEmpty ? exam.ksmc : '');
 
     return InkCard(
       margin: const EdgeInsets.only(bottom: InkSpacing.m),
@@ -216,20 +205,72 @@ class _ExamCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    exam.kcmc,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.tsBodyStrong,
+                  child: Wrap(
+                    spacing: InkSpacing.xs,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        exam.kcmc,
+                        style: context.tsBodyStrong.copyWith(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (tag.isNotEmpty) _tag(context, tag),
+                    ],
                   ),
                 ),
                 const SizedBox(width: InkSpacing.s),
                 _CountdownBadge(days: days),
               ],
             ),
-            if (rows.isNotEmpty) ...[
-              const SizedBox(height: InkSpacing.m),
-              ...rows,
+            const SizedBox(height: 8),
+            Text(
+              exam.kssj.isEmpty ? '时间待公布' : exam.kssj,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.25,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+                color: context.scheme.onSurface,
+              ),
+            ),
+            if (place.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: InkSpacing.m,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: context.scheme.surfaceContainerHighest
+                      .withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(InkRadius.control),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      AppIcons.location,
+                      size: 16,
+                      color: context.scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        place,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.tsBody.copyWith(
+                          fontSize: 13.5,
+                          color: context.scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ],
         ),
@@ -237,39 +278,22 @@ class _ExamCard extends StatelessWidget {
     );
   }
 
-  /// 标签小字 + 加粗值：时间/地点/类型共用，保证多行值对齐。
-  Widget _infoRow(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(icon, size: 18, color: context.scheme.primary),
-          ),
-          const SizedBox(width: InkSpacing.s),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: context.tsCaption),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: context.tsBodyStrong.copyWith(
-                    color: context.scheme.onSurface,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+  /// 考试形式小标签（闭卷 / 开卷 / 机考…）
+  Widget _tag(BuildContext context, String text) {
+    final c = context.scheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: InkTextStyles.label.copyWith(
+          fontSize: 11,
+          color: c,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -284,57 +308,26 @@ class _CountdownBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = inkToneColor(context, _tone);
-    if (days == null || days! < 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: InkSpacing.s,
-          vertical: 3,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(InkRadius.pill),
-        ),
-        child: Text(
-          days == null ? '未公布' : '已结束',
-          style: InkTextStyles.label.copyWith(
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-    final today = days == 0;
+    final text = days == null
+        ? '未公布'
+        : days! < 0
+            ? '已结束'
+            : days == 0
+                ? '今天'
+                : '还有 $days 天';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(InkRadius.control),
+        borderRadius: BorderRadius.circular(InkRadius.pill),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(
-            today ? '今天' : '$days',
-            style: TextStyle(
-              fontSize: today ? 18 : 24,
-              height: 1,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-          if (!today) ...[
-            const SizedBox(width: 2),
-            Text(
-              '天后',
-              style: InkTextStyles.label.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
+      child: Text(
+        text,
+        style: InkTextStyles.label.copyWith(
+          fontSize: 12.5,
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -342,7 +335,6 @@ class _CountdownBadge extends StatelessWidget {
   InkTone get _tone {
     if (days == null || days! < 0) return InkTone.neutral;
     if (days == 0) return InkTone.danger;
-    if (days! <= 7) return InkTone.warning;
-    return InkTone.info;
+    return InkTone.warning;
   }
 }

@@ -198,58 +198,47 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (context.mounted) InkNotice.showDownloadIsland(context);
           });
-          final pct = st.total > 0
-              ? '${(st.progress * 100).toStringAsFixed(0)}%'
-              : '连接中';
-          return InkCard(
-            padding: const EdgeInsets.all(InkSpacing.m),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          // 原「下载并安装」按钮位置/尺寸不变：左侧波浪进度，右侧原地变取消
+          final scheme = Theme.of(context).colorScheme;
+          return Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(InkRadius.control),
+            ),
+            child: Row(
               children: [
-                _WaveProgressBar(
-                  progress: st.progress,
-                  color: context.scheme.primary,
-                ),
-                const SizedBox(height: InkSpacing.s),
-                SizedBox(
-                  height: 48,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // 百分比居中，取消按钮独立贴在右侧
-                      Text(
-                        pct,
-                        style: context.tsBodyStrong.copyWith(
-                          fontSize: 26,
-                          color: context.scheme.primary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton.tonal(
-                          onPressed: _cancelDownload,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size(0, 36),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            visualDensity: VisualDensity.compact,
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(InkRadius.control),
-                            ),
-                          ),
-                          child: const Text('取消'),
-                        ),
-                      ),
-                    ],
+                Expanded(
+                  child: Container(
+                    height: 12,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: _WaveProgressBar(
+                      progress: st.progress,
+                      color: scheme.primary,
+                    ),
                   ),
                 ),
-                const SizedBox(height: InkSpacing.xs),
-                Text(
-                  '进度已同步到顶部灵动岛',
-                  textAlign: TextAlign.center,
-                  style: context.tsCaption.copyWith(
-                    color: context.ink.secondaryLabel,
+                const SizedBox(width: InkSpacing.s),
+                SizedBox(
+                  height: 34,
+                  child: FilledButton(
+                    onPressed: _cancelDownload,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(92, 34),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    child: const Text(
+                      '取消下载',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -578,7 +567,7 @@ class _NoteRow extends StatelessWidget {
   }
 }
 
-/// 谷歌商店风格的不规则波浪下载进度条（流动动效）
+/// 波浪进度条：随下载进度从左向右填充，浪线缓慢流动
 class _WaveProgressBar extends StatefulWidget {
   final double progress; // 0..1
   final Color color;
@@ -643,12 +632,12 @@ class _WavePainter extends CustomPainter {
       return;
     }
     // 波浪填充（半透明）
-    final wavePaint = Paint()..color = color.withValues(alpha: 0.35);
+    final wavePaint = Paint()..color = color.withValues(alpha: 0.32);
     final fillPath = Path()
       ..moveTo(0, h)
       ..lineTo(0, mid);
     for (double x = 0; x <= fill; x += 2) {
-      fillPath.lineTo(x, mid + 3.2 * _WavePainter.sin((x - phase) * 0.12));
+      fillPath.lineTo(x, mid + 3.2 * math.sin((x - phase) * 0.12));
     }
     fillPath
       ..lineTo(fill, h)
@@ -663,7 +652,7 @@ class _WavePainter extends CustomPainter {
     final linePath = Path();
     var first = true;
     for (double x = 0; x <= fill; x += 3) {
-      final y = mid + 3.0 * _WavePainter.sin((x - phase) * 0.12);
+      final y = mid + 3.0 * math.sin((x - phase) * 0.12);
       if (first) {
         linePath.moveTo(x, y);
         first = false;
@@ -674,8 +663,6 @@ class _WavePainter extends CustomPainter {
     canvas.drawPath(linePath, linePaint);
     canvas.restore();
   }
-
-  static double sin(double v) => math.sin(v);
 
   @override
   bool shouldRepaint(_WavePainter old) =>

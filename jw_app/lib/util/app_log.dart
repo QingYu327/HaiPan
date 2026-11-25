@@ -147,8 +147,11 @@ class AppLog {
   static List<String> get entries => _entries;
 
   /// 导出反馈日志到应用私有目录，返回文件绝对路径（供 FileProvider 共享）。
-  /// 导出内容仍是脱敏后的条目；失败返回 null。
-  static Future<String?> exportForFeedback() async {
+  /// 导出内容仍是脱敏后的条目；[extraInfo] 为自动采集的机型/系统等信息，
+  /// 写在文件头部，用户只需描述问题本身，不必再手填环境。
+  static Future<String?> exportForFeedback({
+    Map<String, String>? extraInfo,
+  }) async {
     try {
       final dir = await getApplicationSupportDirectory();
       // 只保留最近一份导出，避免反复反馈堆积文件
@@ -168,8 +171,15 @@ class AppLog {
       final buf = StringBuffer()
         ..writeln('海畔 App 反馈日志')
         ..writeln('导出时间：${now.toIso8601String()}')
-        ..writeln('日志条数：${_entries.length}')
-        ..writeln('---');
+        ..writeln('日志条数：${_entries.length}');
+      if (extraInfo != null && extraInfo.isNotEmpty) {
+        buf
+          ..writeln('--- 设备与环境（自动采集） ---')
+          ..writeAll(
+            extraInfo.entries.map((e) => '${e.key}：${e.value}\n'),
+          );
+      }
+      buf.writeln('---');
       // 内存里最新在前，落盘按时间正序便于阅读
       for (final line in _entries.reversed) {
         buf.writeln(line);

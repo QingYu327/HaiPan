@@ -1,0 +1,14 @@
+{
+  "name": "平均学分绩点排名",
+  "url": "https://jw.gdou.edu.cn/cjpmtj/cjpmtj_cxPjxfjdpmcxIndex.html?gnmkdm=N309106&layout=default",
+  "capturedAt": "2026-08-29T07:11:05.918Z",
+  "xhrs": [
+    {
+      "url": "https://jw.gdou.edu.cn/xtgl/zdpz_cxZdpzList.html?gnmkdm=N309106",
+      "method": "POST",
+      "post": null,
+      "base64": false,
+      "body": "{\"list\":[],\"sfszdgr\":\"0\"}"
+    }
+  ]
+}

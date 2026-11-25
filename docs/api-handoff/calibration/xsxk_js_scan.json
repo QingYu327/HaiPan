@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-08-29T07:12:45.789Z",
+  "matches": [
+    {
+      "src": "https://jw.gdou.edu.cn/js/comp/jwglxt/xkgl/xsxk/zzxkYzb.js?ver=29799251",
+      "snippet": "否则有较小概率出现A页签下显示了B页签的课程\r\n\t});\r\n}\r\n\r\nfunction chooseCoursesQuickly(){\r\n\t$.ajaxSetup({async:false});\r\n\t$.post(_path+\"/xsxk/zzxkyzb_xkZzxkyzbQuickly.html\",{\"xkkz_id\":$(\"#xkkz_id\").val()},function(data){\r\n\t\tif(data.flag==\"0\"){\r\n\t\t\t$.alert(data.msg);\r\n\t\t}else if(data.flag==\"1\"){\r\n\t\t\t//$(\"#xkczbj\").val(\"1\");//减少课表的刷新频率\r\n\t\t\t$(\"#choosedBox\").load(_path+\"/xsxk/zzxkyzb_cxZzxkYzbChoosed.ht"
+    }
+  ]
+}

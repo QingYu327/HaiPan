@@ -1,0 +1,28 @@
+# 飞牛 fnOS 部署：
+# 1) 18080 → 容器 8080：给系统里的 Cloudflare Tunnel 应用（GUI 配置）用，主通道；
+# 2) 18443 → 容器 8443：国内直连（阿里云 TCP 穿透），只跑自签 TLS，无明文 HTTP。
+# 证书放在 ./data/tls（cert.pem/key.pem），不放镜像里，避免重构建后指纹变化。
+# APP 通过设备公钥 + 挑战签名认证。
+services:
+  haipan-api:
+    build: .
+    container_name: haipan-api
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      TLS_PORT: "8443"
+      DATA_DIR: /data
+      # 管理员学号；其余学号需在「APP 准入名单」中开通后才能登记设备
+      ADMIN: "202411413203"
+      # 客户端下发的国内直连入口（阿里云公网 IP:穿透端口）
+      DIRECT_TUNNEL: "https://8.148.27.215:48644"
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+    # 容器 DNS 显式指向公共解析：默认转发在某些固件上要 2s×2 次重试，
+    # 会让每条隧道连接凭空多 4–5 秒（服务端另有进程级 DNS 缓存兜底）。
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
+    volumes:
+      - ./data:/data

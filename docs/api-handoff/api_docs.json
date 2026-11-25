@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "system": "广东海洋大学教务系统（正方/正唐 zftal-ui）",
+    "base": "https://jw.gdou.edu.cn",
+    "capturedAt": "2026-08-29",
+    "authModel": "Cookie 会话（JSESSIONID/route）。所有数据接口仅依赖登录 Cookie，无 token、无 csrf、无 _t 防重放。",
+    "termMapping": {
+      "xnm": "学年，如 2026",
+      "xqm": "学期码：3 = 第一学期(秋)，12 = 第二学期(春)。XNMC 形如 '2024-2025'。",
+      "evidence": "学业情况响应中 XQM='3' 对应 XQMMC='1'(第一学期)，XQM='12' 对应 XQMMC='2'(第二学期)。"
+    },
+    "gnmkdmNote": "菜单模块码，拼在页面 URL 与数据接口 URL 的 ?gnmkdm= 后；POST body 里通常用 zd_fzdm:<gnmkdm>-xs 或同名参数。",
+    "evidenceLevelLegend": "confirmed=已实抓/静态JS确认；inferred=高置信推断（标准正方），待选课开放时 2 分钟点选确认"
+  },
+  "auth": {
+    "loginPublicKey": { "method": "GET", "url": "/xtgl/login_getPublicKey.html", "note": "返回 RSA 公钥，密码加密后提交" },
+    "captcha": { "method": "GET", "url": "/zfcaptchaLogin?type=refresh&rtk=<uuid>", "note": "验证码图片，rtk 为随机 uuid" },
+    "session": "登录成功后服务端种 Cookie，后续所有请求带此 Cookie 即鉴权"
+  },
+  "endpoints": [
+    {
+      "name": "成绩查询",
+      "gnmkdm": "N305005",
+      "pageUrl": "/cjcx/cjcx_cxDgXscj.html?gnmkdm=N305005&layout=default",
+      "api": { "method": "POST", "url": "/cjcx/cjcx_cxDgXscj.html?doType=query" },
+      "requestBody": { "xnm": "学年(如2026)", "xqm": "学期码(3/12)", "zd_fzdm": "N305005-xs", "_search": "false", "nd": "时间戳", "queryModel.showCount": "15", "queryModel.currentPage": "1", "queryModel.sortName": " ", "queryModel.sortOrder": "asc", "time": "0" },
+      "response": "jqGrid JSON：{items:[{kcmc,xnmc,xqmmc,cj,xf,jd,...}], totalCount, pageSize, ...}",
+      "evidence": "confirmed (static JS: js_cj.txt)",
+      "note": "doType=query 走 $.post；首屏通常自动查询"
+    },
+    {
+      "name": "个人课表",
+      "gnmkdm": "N2151",
+      "pageUrl": "/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default",
+      "api": { "method": "POST", "url": "/kbcx/xskbcx_cxXsgrkb.html" },
+      "requestBody": { "xnm": "学年", "xqm": "学期码(3/12)", "kzlx": "ck" },
+      "response": "JSON：{kbList:[{xqj,jcs,kcmc,xm,cdmc,zcd,...}], sjkList, xsxx, xqbzxxszList, ...}",
+      "evidence": "confirmed (static JS: js_kb.txt，含完整字段键)",
+      "note": "返回结构化 JSON，APP 直接解析 kbList，无需 HTML 解析（Dawn-Course 等脚本不需要）"
+    },
+    {
+      "name": "平均学分绩点排名",
+      "gnmkdm": "N309106",
+      "pageUrl": "/cjpmtj/cjpmtj_cxPjxfjdpmcxIndex.html?gnmkdm=N309106&layout=default",
+      "api": { "method": "POST", "url": "/cjpmtj/cjpmtj_cxPjxfjdpmcxIndex.html?doType=query" },
+      "requestBody": { "qsXnxq": "起始学年学期(如 '2024-2025')", "zzXnxq": "终止学年学期", "cjxzm": "成绩性质(radio值)", "tjfw": "统计范围(radio值)", "cjbjArr": "成绩班级数组(可选,逗号分隔)" },
+      "response": "jqGrid JSON：{items:[{xh,xm,pjxfjd,pm,jgmc,njmc,zymc,bj}], totalCount,...}",
+      "evidence": "confirmed (static JS: cjpmtj.js 含 url+paramMap+colModel)",
+      "note": "jqGrid 初始 datatype:'local'，需点击「查询」按钮才发 doType=query。colModel 字段：xh 学号 / xm 姓名 / pjxfjd 平均学分绩点 / pm 名次 / jgmc 学院 / njmc 年级 / zymc 专业 / bj 班级"
+    },
+    {
+      "name": "考试安排",
+      "gnmkdm": "N358105",
+      "pageUrl": "/kwgl/kscx_cxXsksxxIndex.html?gnmkdm=N358105&layout=default",
+      "api": { "method": "POST", "url": "/kwgl/kscx_cxXsksxxIndex.html?doType=query&gnmkdm=N358105" },
+      "requestBody": { "xnm": "2026", "xqm": "3", "ksmcdmb_id": "", "kch": "", "kc": "", "ksrq": "", "kkbm_id": "", "_search": "false", "nd": "时间戳", "queryModel.showCount": "15", "queryModel.currentPage": "1", "queryModel.sortName": " ", "queryModel.sortOrder": "asc", "time": "0" },
+      "response": "jqGrid JSON：{currentPage,items:[...考试记录...],totalCount,pageSize,...}",
+      "evidence": "confirmed (实抓 calibration/kscx.json)",
+      "note": "items 为空=当学期无考试安排；字段在列配置 zdpz 返回里"
+    },
+    {
+      "name": "学业情况",
+      "gnmkdm": "N105515",
+      "pageUrl": "/xsxy/xsxyqk_cxXsxyqkIndex.html?echarts=1&gnmkdm=N105515&layout=default",
+      "api": [
+        { "method": "POST", "url": "/xsxy/xsxyqk_cxJxzxjhxfyqKcxx.html?gnmkdm=N105515", "desc": "必修/计划内课程" },
+        { "method": "POST", "url": "/xsxy/xsxyqk_cxJxzxjhxfyqFKcxx.html?gnmkdm=N105515", "desc": "方案外课程" }
+      ],
+      "requestBody": { "fromXh_id": "", "xfyqjd_id": "学分要求计划ID(每次加载变化，须从页面/前置接口取得)", "xh_id": "学号，如 202411413203" },
+      "response": "JSON 数组：[{KCH_ID,KCMC,XDZT,XNM,KCLBDM,KCYWMC,XSXXXX,KCXZMC,XNMC,CJ,KCLBMC,XF,MAXCJ,KCH,KCZT,XQMMC,JYXDXNMC,XQM,SFJHKC,JYXDXQMC,JD,KCZYXXS,JYXDXQM}, ...]",
+      "evidence": "confirmed (实抓 calibration/xsxy.json，含真实成绩：思想道德与法治 CJ=87 JD=3.7 XF=2.5 等)",
+      "note": "xfyqjd_id 为动态值，APP 需先解析页面隐藏域或首屏 HTML 取得；xh_id 固定为当前学号"
+    },
+    {
+      "name": "自主选课·列表与开放检测",
+      "gnmkdm": "N253512",
+      "pageUrl": "/xsxk/zzxkyzb_cxZzxkYzbIndex.html?gnmkdm=N253512&layout=default",
+      "openDetect": { "method": "GET", "url": "选课页 HTML", "rule": "解析 #iskxk：=='1' 开放，=='0' 锁定" },
+      "api": [
+        { "method": "POST", "url": "/xsxk/zzxkyzb_cxZzxkYzbPartDisplay.html", "desc": "某课程下教学班列表(局部片段)" },
+        { "method": "POST", "url": "/xsxk/zzxkyzb_cxJxbWithKchZzxkYzb.html", "desc": "按课程查教学班" },
+        { "method": "POST", "url": "/xsxk/zzxkyzb_cxYinxyixxfByKklxdm.html", "body": "{xkkz_id,kklxdm,zyh_id}", "desc": "按课程类型查" },
+        { "method": "POST", "url": "/xsxk/zzxkyzb_cxCheckZzxkyzbXfmcBynjzy.html", "desc": "学分名册校验" },
+        { "method": "POST", "url": "/xsxk/zzxkyzb_cxXspkqkqr.html", "body": "{xnm,xqm}", "desc": "选课冲突确认" },
+        { "method": "POST", "url": "/xsxk/zzxkyzb_cxTbXspjzt.html", "desc": "教学评价状态" }
+      ],
+      "evidence": "confirmed (static JS: zzxkYzb.js / js_xk.txt)",
+      "note": "全部仅依赖 Cookie 会话"
+    },
+    {
+      "name": "自主选课·批量快选（抢课主链路）",
+      "gnmkdm": "N253512",
+      "api": { "method": "POST", "url": "/xsxk/zzxkyzb_xkZzxkyzbQuickly.html" },
+      "requestBody": { "xkkz_id": "选课控制ID(页面隐藏域 #xkkz_id)" },
+      "response": "{flag:'0'|'1', msg:'...'}",
+      "evidence": "confirmed (static JS zzxkYzb.js:469 chooseCoursesQuickly)",
+      "note": "一键按当前已选教学班批量提交；flag=1 成功。无 token/防重放，可并发 POST"
+    },
+    {
+      "name": "自主选课·单教学班选课（定向抢课目标端点）",
+      "gnmkdm": "N253512",
+      "api": { "method": "POST", "url": "/xsxk/zzxkyzb_xkZzxkyzb.html", "inferred": true },
+      "requestBody": { "jxb_id": "教学班ID", "do_jxb_id": "教学班对应ID", "kch_id": "课程ID", "jxbzls": "教学班序列", "xkkz_id": "选课控制ID" },
+      "response": "{flag,msg} (标准正方，待实抓确认)",
+      "evidence": "inferred (高置信：标准正方端点；调用签名 chooseCourseZzxk(jxb_id,do_jxb_id,kch_id,jxbzls) 已确认；定义体仅在选课开放时加载)",
+      "note": "选课当前锁定(iskxk=0)无法触发实抓。下一位 AI 在选课开放(iskxk=1)时点任一课程行即可在 PartDisplay 片段/网络里看到真实端点与参数，约 2 分钟确认"
+    }
+  ]
+}

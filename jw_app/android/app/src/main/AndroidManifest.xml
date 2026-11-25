@@ -8,7 +8,10 @@
     <!-- 本地通知（上课/考试提醒） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <!-- 精确闹钟：有权限时准点触发，无权限时自动降级为 allow-while-idle -->
+    <!-- 精确闹钟：Android 13+ 自动授予 USE_EXACT_ALARM，
+         否则 SCHEDULE_EXACT_ALARM 默认不授予，闹钟会降级成非精确模式，
+         后台被 ROM 深度休眠时提醒会一直拖到 App 回到前台才弹出。 -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <!-- 电池优化白名单：避免国产 ROM 后台限制导致上课提醒不触发 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>

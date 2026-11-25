@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -21,20 +23,10 @@ class _FeedbackPageState extends State<FeedbackPage> {
 
   static const String email = 'xiuhong0327@163.com';
 
-  static const String subjectTemplate = '【海畔反馈】问题简述 - 学号';
+  static const String subjectTemplate = '【海畔反馈】问题简述';
 
-  static const String bodyTemplate =
-      '问题描述：\n'
-      '复现步骤：\n'
-      '1. \n'
-      '2. \n'
-      '3. \n'
-      '预期结果：\n'
-      '实际结果：\n'
-      '发生时间：____年__月__日 __:__ 左右\n'
-      '所在页面：课表 / 成绩 / 考试 / 学业 / 我的 → ____\n'
-      '应用版本：v$appVersion\n'
-      '手机型号与系统：';
+  /// 只让用户简单描述问题：机型、系统、版本等由 App 自动采集并写进导出日志
+  static const String bodyTemplate = '问题描述：\n';
 
   bool _busy = false;
 
@@ -44,12 +36,49 @@ class _FeedbackPageState extends State<FeedbackPage> {
     showInkToast(context, '$label已复制');
   }
 
+  /// 自动采集反馈所需的设备/系统信息，写入导出日志头部，
+  /// 用户不必再手动填写机型、系统版本这类难记的内容。
+  Future<Map<String, String>> _collectDeviceInfo() async {
+    final info = <String, String>{'App 版本': 'v$appVersion'};
+    try {
+      final d = await _appChannel.invokeMethod<Map>('deviceInfo');
+      if (d != null) {
+        void put(String label, String key) {
+          final v = '${d[key] ?? ''}'.trim();
+          if (v.isNotEmpty && v != 'null') info[label] = v;
+        }
+
+        put('厂商', 'manufacturer');
+        put('品牌', 'brand');
+        put('机型', 'model');
+        put('设备代号', 'device');
+        put('Android 版本', 'release');
+        put('SDK', 'sdk');
+        put('CPU 架构', 'abi');
+        put('屏幕分辨率', 'screen');
+        put('屏幕密度', 'density');
+        put('应用版本号', 'version');
+        put('构建号', 'build');
+        put('语言', 'locale');
+        put('时区', 'timezone');
+      }
+    } catch (_) {
+      // 原生通道不可用时保留基础信息
+    }
+    final os = Platform.operatingSystem;
+    if (os.isNotEmpty) info['系统'] = os;
+    final osVersion = Platform.operatingSystemVersion;
+    if (osVersion.isNotEmpty) info['系统版本'] = osVersion;
+    return info;
+  }
+
   /// 导出日志 → 调起邮件客户端并带上附件；失败时退回纯 mailto。
   Future<void> _sendWithLog() async {
     if (_busy) return;
     AppLog.w('反馈', '点击「导出日志并发送邮件」');
     setState(() => _busy = true);
-    final logPath = await AppLog.exportForFeedback();
+    final deviceInfo = await _collectDeviceInfo();
+    final logPath = await AppLog.exportForFeedback(extraInfo: deviceInfo);
     AppLog.w('反馈', '日志导出：${logPath ?? '失败'}');
     var ok = false;
     if (logPath != null) {
@@ -99,8 +128,8 @@ class _FeedbackPageState extends State<FeedbackPage> {
         InkCard(
           tone: InkTone.info,
           child: Text(
-            '请务必附上日志：点击下方按钮会自动导出运行日志，'
-            '并作为附件填入邮件。',
+            '简单描述遇到的问题即可，手机型号、系统版本等信息会自动写入日志。'
+            '点击下方按钮会导出日志并作为邮件附件。',
             style: context.tsBody,
           ),
         ),

@@ -9,6 +9,7 @@ import '../api/jw_client.dart';
 import '../api/usage_api.dart';
 import '../providers/session_provider.dart';
 import 'app_log.dart';
+import 'network_info.dart';
 import 'server_config.dart';
 import 'tls_pin.dart';
 import 'webview_proxy.dart';
@@ -58,7 +59,12 @@ class CampusTunnel {
   /// 并把 Dio 与 WebView 的教务请求切到本地代理。返回是否启用了通道。
   ///
   /// [xh] 用于启动期（此时会话 Provider 可能仍在构建），避免反向读取会话。
-  Future<bool> adapt(JwClient client, {String? xh}) async {
+  /// [warm] 是否顺手预热：登录页自己会立刻发真实请求，此时预热只会抢隧道带宽。
+  Future<bool> adapt(JwClient client, {String? xh, bool warm = true}) async {
+    // 等客户端读完持久化的通道模式，避免刚启动时误建隧道
+    await client.ready;
+    // 官方 WebVPN 通道下所有请求都走 wfw 反代，不需要本地隧道
+    if (client.wfwMode) return false;
     final known = (xh ?? '').trim();
     if (known.isNotEmpty) _fallbackXh = known;
     // 没有学号无法做设备认证，等登录页补录后再启用
@@ -67,16 +73,27 @@ class CampusTunnel {
       client.setProxyPort(_port!);
       await WebViewProxy.set(_port!);
       // 已有通道时顺手预热一次（30s 内不重复），省掉后续首次握手
-      unawaited(client.warmUp());
+      if (warm) unawaited(client.warmUp());
+      return true;
+    }
+    // 移动数据下直连校园网必然失败，直接建通道，省掉每次 4s 的探测等待；
+    // Wi-Fi 仍先试直连，校内网络可以零通道使用。
+    if (await NetworkInfo.isCellularOnly()) {
+      final p = await ensureStarted();
+      client.setProxyPort(p, force: true);
+      await WebViewProxy.set(p);
+      AppLog.d('通道', '移动数据环境，直接启用通道 :$p');
+      if (warm) unawaited(client.warmUp());
       return true;
     }
     if (await _directReachable()) return false;
     final p = await ensureStarted();
-    client.setProxyPort(p);
+    // 新建通道后强制换连接池：旧端口留下的 socket 已不可用
+    client.setProxyPort(p, force: true);
     await WebViewProxy.set(p);
     AppLog.d('通道', '校外环境，已自动启用通道 :$p');
     // 提前建好 TCP + TLS + 隧道 WebSocket，页面真正请求时直接复用连接
-    unawaited(client.warmUp());
+    if (warm) unawaited(client.warmUp());
     return true;
   }
 
@@ -92,12 +109,27 @@ class CampusTunnel {
         DateTime.now().difference(at) < _directTtl) {
       return false;
     }
+    // 合并并发探测：启动期多处同时 adapt 时，不要各等 4s
+    final pending = _directProbe;
+    if (pending != null) return pending;
+    final probe = _probeDirect();
+    _directProbe = probe;
+    try {
+      return await probe;
+    } finally {
+      if (identical(_directProbe, probe)) _directProbe = null;
+    }
+  }
+
+  Future<bool> _probeDirect() async {
     bool ok;
     try {
       final s = await Socket.connect(
         'jw.gdou.edu.cn',
         443,
-        timeout: const Duration(seconds: 4),
+        // 校内到教务是同网段握手，正常在 100ms 内完成；1.8s 足够覆盖弱 Wi-Fi，
+        // 校外则尽快失败切通道（原来 4s 让每次冷启动最多白等 4 秒）。
+        timeout: const Duration(milliseconds: 1800),
       );
       s.destroy();
       ok = true;
@@ -112,6 +144,7 @@ class CampusTunnel {
   static const Duration _directTtl = Duration(minutes: 10);
   bool? _directOk;
   DateTime? _directAt;
+  Future<bool>? _directProbe;
 
   /// 启动本地代理（重复调用返回同一端口）。
   Future<int> ensureStarted() async {
@@ -183,35 +216,37 @@ class CampusTunnel {
         sub.pause();
         final head = String.fromCharCodes(header.sublist(0, end));
         final rest = header.sublist(end + 4);
-        _startTunnel(socket, head, rest).then((t) {
-          if (dead) {
-            t?.close();
-            return;
-          }
-          if (t == null) {
-            dead = true;
-            _sockets.remove(socket);
-            sub.cancel();
-            _closeQuietly(socket);
-            return;
-          }
-          tunnel = t;
-          if (pending.isNotEmpty) {
-            t.add(pending);
-            pending.clear();
-          }
-          try {
-            sub.resume();
-          } catch (_) {
-            t.close();
-          }
-        }).catchError((Object e) {
-          AppLog.e('通道', '隧道异常：$e');
-          dead = true;
-          _sockets.remove(socket);
-          sub.cancel();
-          _closeQuietly(socket);
-        });
+        _startTunnel(socket, head, rest)
+            .then((t) {
+              if (dead) {
+                t?.close();
+                return;
+              }
+              if (t == null) {
+                dead = true;
+                _sockets.remove(socket);
+                sub.cancel();
+                _closeQuietly(socket);
+                return;
+              }
+              tunnel = t;
+              if (pending.isNotEmpty) {
+                t.add(pending);
+                pending.clear();
+              }
+              try {
+                sub.resume();
+              } catch (_) {
+                t.close();
+              }
+            })
+            .catchError((Object e) {
+              AppLog.e('通道', '隧道异常：$e');
+              dead = true;
+              _sockets.remove(socket);
+              sub.cancel();
+              _closeQuietly(socket);
+            });
       },
       onError: (Object _) {
         dead = true;
@@ -223,6 +258,8 @@ class CampusTunnel {
         dead = true;
         _sockets.remove(socket);
         tunnel?.close();
+        // 区分「谁先关」：这里是 App 自己断开；对端断开会在上游关闭流里打印
+        AppLog.d('通道', '本端连接关闭（App 断开）');
       },
     );
   }
@@ -238,17 +275,22 @@ class CampusTunnel {
 
   /// 解析代理请求并建好隧道；失败时已回写错误响应并返回 null。
   Future<_Tunnel?> _startTunnel(
-      Socket socket, String head, List<int> rest) async {
+    Socket socket,
+    String head,
+    List<int> rest,
+  ) async {
     final lines = head.split('\r\n');
     final line = lines.first;
+    final sw = Stopwatch()..start();
     String host;
     int targetPort;
     var needAck = false;
     var initial = rest;
 
-    final connect = RegExp(r'^CONNECT\s+([^:\s]+):(\d+)\s+HTTP/1\.[01]$',
-            caseSensitive: false)
-        .firstMatch(line);
+    final connect = RegExp(
+      r'^CONNECT\s+([^:\s]+):(\d+)\s+HTTP/1\.[01]$',
+      caseSensitive: false,
+    ).firstMatch(line);
     if (connect != null) {
       host = connect.group(1)!.toLowerCase();
       targetPort = int.parse(connect.group(2)!);
@@ -257,9 +299,9 @@ class CampusTunnel {
       // 明文 http:// 请求：WebView 走代理时发送的是绝对 URI，
       // 需要还原成源站请求行再经隧道转发。
       final m = RegExp(
-              r'^([A-Z]+)\s+https?://([^/\s:]+)(?::(\d+))?([^\s]*)\s+(HTTP/1\.[01])$',
-              caseSensitive: false)
-          .firstMatch(line);
+        r'^([A-Z]+)\s+https?://([^/\s:]+)(?::(\d+))?([^\s]*)\s+(HTTP/1\.[01])$',
+        caseSensitive: false,
+      ).firstMatch(line);
       if (m == null) {
         socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
         return null;
@@ -297,7 +339,10 @@ class CampusTunnel {
     if (muxOk) {
       if (needAck) socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (initial.isNotEmpty) _mux.send(muxId, initial);
-      AppLog.d('通道', '复用建立 $host:$targetPort #$muxId');
+      AppLog.d(
+        '通道',
+        '复用建立 $host:$targetPort #$muxId（${sw.elapsedMilliseconds}ms）',
+      );
       return _Tunnel(
         add: (data) => _mux.send(muxId, data),
         close: () => _mux.close(muxId),
@@ -359,10 +404,7 @@ class CampusTunnel {
   /// 先让已排队的响应刷出再断开；直接 destroy 会丢掉「响应后立即关闭」的末尾数据。
   void _closeQuietly(Socket socket) {
     try {
-      socket
-          .flush()
-          .timeout(const Duration(seconds: 2))
-          .whenComplete(() {
+      socket.flush().timeout(const Duration(seconds: 2)).whenComplete(() {
         try {
           socket.destroy();
         } catch (_) {}
@@ -424,6 +466,8 @@ class CampusTunnel {
         }
         return ws;
       } catch (err) {
+        // 白名单/换绑属于业务拒绝，换入口也一样，直接上抛
+        if (err is AccessDeniedException) rethrow;
         last = err;
       }
     }
@@ -483,6 +527,11 @@ class _MuxTunnel {
   Future<void>? _connecting;
   final Map<int, void Function(List<int>)> _data = {};
   final Map<int, void Function()> _closed = {};
+  /// 每条子流的建立时间：用于判断「连接到底是几秒后被谁关掉的」
+  final Map<int, DateTime> _at = {};
+  /// 还没收到首包的子流（用于区分「建流慢」还是「源站慢」）
+  final Set<int> _first = {};
+  DateTime? _pingAt;
   Timer? _ping;
   bool _off = false;
   DateTime? _offAt;
@@ -513,6 +562,8 @@ class _MuxTunnel {
     if (!await _ensure()) return false;
     _data[id] = onData;
     _closed[id] = onClose;
+    _at[id] = DateTime.now();
+    _first.add(id);
     final hostBytes = utf8.encode(host);
     final body = Uint8List(1 + hostBytes.length + 2);
     body[0] = hostBytes.length;
@@ -527,6 +578,8 @@ class _MuxTunnel {
   void close(int id) {
     _data.remove(id);
     _closed.remove(id);
+    _at.remove(id);
+    _first.remove(id);
     _send(3, id, const []);
   }
 
@@ -570,7 +623,10 @@ class _MuxTunnel {
       _ping?.cancel();
       // 应用层心跳：Cloudflare 对空闲连接有回收，定期写一帧保持存活
       _ping = Timer.periodic(const Duration(seconds: 20), (_) {
-        if (_ws?.readyState == WebSocket.open) _send(4, 0, const []);
+        if (_ws?.readyState == WebSocket.open) {
+          _pingAt = DateTime.now();
+          _send(4, 0, const []);
+        }
       });
       ws.listen(
         _onMessage,
@@ -579,6 +635,9 @@ class _MuxTunnel {
         cancelOnError: true,
       );
       AppLog.d('通道', '复用隧道已连接');
+      // 连上立刻打一次心跳，日志里能直接看到隧道端到端 RTT
+      _pingAt = DateTime.now();
+      _send(4, 0, const []);
     } catch (e) {
       AppLog.w('通道', '复用隧道不可用，回退逐连接模式：$e');
       _off = true;
@@ -609,12 +668,37 @@ class _MuxTunnel {
     if (type == 2) {
       final cb = _data[id];
       if (cb == null) return;
+      final at = _at[id];
+      if (at != null && _first.remove(id)) {
+        AppLog.d(
+          '通道',
+          '首包 #$id（建流→首包 ${DateTime.now().difference(at).inMilliseconds}ms）',
+        );
+      }
       cb(bytes.sublist(5));
+      return;
+    }
+    if (type == 5) {
+      final at = _pingAt;
+      if (at != null) {
+        AppLog.d(
+          '通道',
+          '隧道心跳 RTT ${DateTime.now().difference(at).inMilliseconds}ms',
+        );
+        _pingAt = null;
+      }
       return;
     }
     if (type == 3) {
       final cb = _closed.remove(id);
       _data.remove(id);
+      final at = _at.remove(id);
+      if (at != null) {
+        AppLog.d(
+          '通道',
+          '上游关闭流 #$id（存活 ${DateTime.now().difference(at).inMilliseconds}ms）',
+        );
+      }
       if (cb != null) {
         try {
           cb();

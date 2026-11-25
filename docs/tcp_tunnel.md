@@ -54,7 +54,7 @@ CONNECT 是 HTTP 协议里专门为隧道设计的动词：客户端说"帮我�
 | 入口 | 形式 | 说明 |
 |---|---|---|
 | 国内直连 | `https://IP:高位端口` | 阿里云/MeFrp/其他 frp 的 TCP 透传 → NAS:18443；自签 EC 证书，客户端按 SHA-256 指纹固定 |
-| Cloudflare | `https://api.example.com` | WSS 经 CF 边缘；证书由 CF 签发，指纹固定逻辑自动跳过 |
+| Cloudflare | `https://haipan-api.cjhong.top` | WSS 经 CF 边缘；证书由 CF 签发，指纹固定逻辑自动跳过 |
 
 服务端 `:8443` 只接受 TLS，明文 HTTP 打到该端口不会有任何响应；WebSocket 必须带固定子协议 `haipan-v1`，
 再加 Bearer 会话令牌，三者缺一不可。
