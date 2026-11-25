@@ -165,7 +165,7 @@ class UsageTracker {
     if (d is! Map) return null;
     final code = '${d['error'] ?? d['code'] ?? ''}';
     if (code == 'not_allowed') {
-      return AccessDeniedException('not_allowed', '该学号未加入白名单，暂无法登录');
+      return AccessDeniedException('not_allowed', '该学号未开通公网通道，请使用校园网登录或联系管理员');
     }
     if (code == 'device_mismatch') {
       return AccessDeniedException(
@@ -188,7 +188,7 @@ class UsageTracker {
       final denied = e.response == null ? null : _deniedOf(e.response!);
       if (denied != null) throw denied;
       if (s == 403) {
-        throw AccessDeniedException('not_allowed', '该学号未加入白名单，暂无法登录');
+        throw AccessDeniedException('not_allowed', '该学号未开通公网通道，请使用校园网登录或联系管理员');
       }
       if (s == 409) {
         throw AccessDeniedException(
@@ -327,7 +327,7 @@ class UsageTracker {
     final d = r.data;
     if (d is Map && d.containsKey(gateApp)) {
       if (d[gateApp] == true) return true;
-      throw AccessDeniedException('not_allowed', '该学号未加入白名单，暂无法登录');
+      throw AccessDeniedException('not_allowed', '该学号未开通公网通道，请使用校园网登录或联系管理员');
     }
     // 结构不认识时不拦，交给后续真实请求判断
     return true;

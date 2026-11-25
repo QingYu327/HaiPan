@@ -50,6 +50,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   bool _busy = false;
   bool _opening = false;
+  /// 校园网建议横幅是否已被关闭（仅本次登录页有效）
+  bool _bannerClosed = false;
   bool _obscure = true;
   bool _networkReady = false;
   bool _needCaptcha = false;
@@ -507,6 +509,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (!_bannerClosed) _campusBanner(),
                     const SizedBox(height: InkSpacing.xxxl),
                     Center(
                       child: ClipRRect(
@@ -547,6 +550,41 @@ class _LoginPageState extends ConsumerState<LoginPage>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 校园网建议横幅：可关闭，只在本次登录页展示，不打断操作。
+  Widget _campusBanner() {
+    return InkCard(
+      tone: InkTone.info,
+      padding: const EdgeInsets.fromLTRB(
+        InkSpacing.m,
+        InkSpacing.xs,
+        InkSpacing.xs,
+        InkSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            AppIcons.info,
+            size: 16,
+            color: inkToneColor(context, InkTone.info),
+          ),
+          const SizedBox(width: InkSpacing.s),
+          Expanded(
+            child: Text(
+              '建议使用校园网登录。公网通道需联系管理员开通，且速度较慢。',
+              style: context.tsSecondary,
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _bannerClosed = true),
+            icon: const Icon(AppIcons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: '关闭',
+          ),
+        ],
       ),
     );
   }

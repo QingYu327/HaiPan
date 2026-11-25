@@ -61,7 +61,7 @@ class AccessDeniedPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: InkSpacing.m),
                   Text(
-                    '拒绝原因：当前账号不在使用名单内。\n请联系管理员开通后再次校验。',
+                    '当前账号未开通公网通道。\n校园网内可直接使用，校外请联系管理员开通。',
                     textAlign: TextAlign.center,
                     style: context.tsSecondary,
                   ),

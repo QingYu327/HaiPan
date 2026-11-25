@@ -158,7 +158,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
               _PermListSection(
                 key: ValueKey('perm-app-$_refreshToken'),
                 title: 'APP 准入名单',
-                hint: '仅名单内学号可使用 APP，新登录用户默认禁止',
+                hint: '只校验公网（校外）登录：名单内可用公网通道，校园网登录不受限',
                 feature: UsageTracker.featureApp,
                 block: false,
                 notes: _notes,
@@ -377,10 +377,10 @@ class _PermListSectionState extends ConsumerState<_PermListSection> {
   }
 
   Future<void> _remove(String xh) async {
-    final title = widget.block ? '移出黑名单' : '取消 APP 权限';
+    final title = widget.block ? '移出黑名单' : '取消公网权限';
     final message = widget.block
         ? '确认将 $xh 移出黑名单？移出后该学号可正常检查更新。'
-        : '确认取消 $xh 的 APP 使用权限？取消后该学号将无法进入 APP。';
+        : '确认取消 $xh 的公网使用权限？取消后该学号只能在校内网使用 APP。';
     final ok = await showInkDialog(
       context,
       title: title,

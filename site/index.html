@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>海畔 · 掌上教务</title>
+<meta name="description" content="海畔：本校课表、成绩、考试与空教室的第三方客户端。">
+<style>
+  :root{
+    --paper:#eef3f5;
+    --card:#f9fbfc;
+    --ink:#152430;
+    --ink-2:#4b5d6a;
+    --ink-3:#8698a4;
+    --blue:#2b5c7a;
+    --blue-deep:#173546;
+    --line:rgba(21,36,48,.10);
+    --cell-a:#d9e7ee;
+    --cell-b:#cfe0dc;
+    --cell-c:#e4eaec;
+    --cell-d:#ccdae4;
+    --font-display:"Songti SC","Noto Serif SC","Source Han Serif SC","STSong","SimSun",serif;
+    --font-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+    --max:1160px;
+    --r:28px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--font-body);line-height:1.7;font-size:16px;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(90% 60% at 8% 0%,rgba(207,224,220,.55),transparent 60%),
+      radial-gradient(80% 55% at 95% 6%,rgba(214,229,238,.7),transparent 62%);
+  }
+  .wrap{position:relative;z-index:1;max:var(--max);margin:0 auto;padding:0 28px}
+
+  /* 顶栏 */
+  header{position:sticky;top:0;z-index:30;backdrop-filter:blur(14px);
+    background:linear-gradient(to bottom,rgba(238,243,245,.9),rgba(238,243,245,.55))}
+  .bar{display:flex;align-items:center;justify-content:space-between;height:68px}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+  .mark{width:30px;height:30px;border-radius:9px;background:var(--blue-deep);color:#eef3f5;
+    display:grid;place-items:center;font-family:var(--font-display);font-size:17px;line-height:1}
+  .brand b{font-family:var(--font-display);font-weight:400;font-size:19px;letter-spacing:.18em}
+  .bar nav{display:flex;align-items:center;gap:24px}
+  .bar nav a{font-size:13.5px;color:var(--ink-2);text-decoration:none;letter-spacing:.06em}
+  .bar nav a:hover{color:var(--blue)}
+  .pill{display:inline-flex;align-items:center;gap:8px;text-decoration:none;
+    background:var(--blue-deep);color:#f2f7f9;border-radius:999px;padding:10px 20px;
+    font-size:13.5px;letter-spacing:.06em;
+    transition:background .3s,transform .3s cubic-bezier(.2,.7,.2,1)}
+  .pill:hover{background:var(--blue);transform:translateY(-1px)}
+  .pill.ghost{background:transparent;color:var(--blue-deep);border:1px solid var(--line)}
+  .pill.ghost:hover{background:rgba(21,36,48,.04);transform:none}
+
+  /* 首屏 */
+  .hero{padding:64px 0 0;text-align:center}
+  h1{font-family:var(--font-display);font-weight:400;
+    font-size:clamp(40px,6.6vw,80px);line-height:1.1;letter-spacing:.08em;margin:0}
+  .hero p.sub{margin:20px auto 0;max-width:34em;color:var(--ink-2);font-size:16.5px}
+  .acts{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+  .meta{margin:16px 0 0;font-size:12.5px;color:var(--ink-3);letter-spacing:.06em}
+
+  /* 大卡片 */
+  .stage{position:relative;margin-top:48px;border-radius:var(--r);overflow:hidden;
+    padding:48px 40px 0;
+    background:
+      radial-gradient(110% 90% at 14% 2%,rgba(214,229,238,.95),transparent 58%),
+      radial-gradient(110% 85% at 88% 6%,rgba(207,224,220,.95),transparent 60%),
+      linear-gradient(180deg,#f9fcfd,#eaf1f4);
+    border:1px solid var(--line);
+    box-shadow:0 50px 90px -64px rgba(21,36,48,.6),inset 0 1px 0 rgba(255,255,255,.8)}
+  .stage::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:linear-gradient(rgba(21,36,48,.05) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(21,36,48,.05) 1px,transparent 1px);
+    background-size:72px 72px;
+    mask-image:radial-gradient(70% 65% at 50% 25%,#000 10%,transparent 72%)}
+  .stage::after{content:"";position:absolute;left:0;right:0;bottom:0;height:110px;
+    pointer-events:none;z-index:6;
+    background:linear-gradient(to bottom,rgba(234,241,244,0),rgba(234,241,244,.9) 66%,#eaf1f4)}
+  .phones{position:relative;display:flex;justify-content:center;align-items:flex-end;height:490px}
+  .phone{position:relative;background:var(--card);border-radius:28px;
+    border:1px solid rgba(21,36,48,.1);
+    box-shadow:0 36px 64px -38px rgba(21,36,48,.55);
+    width:266px;height:452px;padding:14px 12px;overflow:hidden;
+    transition:transform .7s cubic-bezier(.2,.7,.2,1)}
+  .phone.left{transform:rotate(-4deg) translate(24px,26px) scale(.94);z-index:1}
+  .phone.right{transform:rotate(4deg) translate(-24px,26px) scale(.94);z-index:1}
+  .phone.mid{z-index:3}
+  .stage:hover .phone.left{transform:rotate(-6deg) translate(10px,8px) scale(.96)}
+  .stage:hover .phone.right{transform:rotate(6deg) translate(-10px,8px) scale(.96)}
+  .stage:hover .phone.mid{transform:translateY(-6px)}
+  .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);
+    width:54px;height:4px;border-radius:999px;background:rgba(21,36,48,.12)}
+  .pin{margin-top:10px;height:calc(100% - 10px);border-radius:20px;overflow:hidden;
+    background:linear-gradient(180deg,#fdfefe,#f2f7f9)}
+  .ph-head{padding:13px 13px 9px;display:flex;align-items:center;justify-content:space-between}
+  .ph-head b{font-family:var(--font-display);font-weight:400;font-size:14.5px;letter-spacing:.1em}
+  .ph-head span{font-size:10px;color:var(--ink-3);letter-spacing:.08em}
+  .ph-body{padding:0 11px 11px}
+
+  /* 课表 */
+  .tt{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+  .tt .c{height:32px;border-radius:6px;background:rgba(21,36,48,.04)}
+  .tt .b{height:32px;border-radius:6px}
+  .b1{background:var(--cell-a)}.b2{background:var(--cell-b)}
+  .b3{background:var(--cell-c)}.b4{background:var(--cell-d)}
+  .tt .h{height:14px;border-radius:4px;background:rgba(21,36,48,.05)}
+
+  /* 列表 */
+  .row{display:flex;align-items:center;justify-content:space-between;
+    padding:9px 10px;border-radius:9px;background:rgba(255,255,255,.78);
+    border:1px solid rgba(21,36,48,.06);margin-bottom:6px}
+  .row .bar{display:grid;gap:3px}
+  .row .bar i{display:block;width:84px;height:6px;border-radius:3px;background:rgba(21,36,48,.16)}
+  .row .bar u{display:block;width:48px;height:4px;border-radius:3px;background:rgba(21,36,48,.09)}
+  .row .s{font-family:var(--font-display);font-size:14.5px;color:var(--blue)}
+  .row em{font-style:normal;font-size:9.5px;letter-spacing:.06em;color:#33685e;
+    background:rgba(51,104,94,.1);border-radius:999px;padding:3px 9px}
+  .row em.off{color:var(--ink-3);background:rgba(21,36,48,.05)}
+  .sum{display:flex;gap:8px;margin-bottom:9px}
+  .sum div{flex:1;border-radius:10px;padding:8px 9px;background:rgba(21,36,48,.04)}
+  .sum span{display:block;font-size:9px;color:var(--ink-3);letter-spacing:.06em}
+  .sum strong{font-family:var(--font-display);font-weight:400;font-size:16px}
+  .cd{display:grid;place-items:center;gap:2px;border-radius:12px;padding:12px 0;margin-bottom:9px;
+    background:linear-gradient(180deg,rgba(207,224,220,.9),rgba(214,229,238,.65))}
+  .cd b{font-family:var(--font-display);font-weight:400;font-size:30px;line-height:1}
+  .cd span{font-size:9.5px;letter-spacing:.12em;color:var(--ink-2)}
+  .chips{display:flex;gap:5px;margin-bottom:9px}
+  .chips i{height:17px;border-radius:999px;border:1px solid rgba(21,36,48,.12);flex:1}
+  .chips i.on{background:rgba(43,92,122,.12);border-color:rgba(43,92,122,.4)}
+
+  /* 分节 */
+  section{padding:88px 0 0}
+  .head{text-align:center;max-width:600px;margin:0 auto 36px}
+  .head h2{font-family:var(--font-display);font-weight:400;
+    font-size:clamp(26px,3.6vw,38px);letter-spacing:.08em;margin:0;line-height:1.25}
+  .head p{margin:10px 0 0;color:var(--ink-3);font-size:14.5px}
+
+  .feature{display:grid;grid-template-columns:1fr 1fr;align-items:stretch;
+    border-radius:var(--r);overflow:hidden;margin-bottom:20px;
+    background:var(--card);border:1px solid var(--line);
+    box-shadow:0 36px 70px -60px rgba(21,36,48,.55)}
+  .feature .txt{padding:44px;display:flex;flex-direction:column;justify-content:center}
+  .feature h3{font-family:var(--font-display);font-weight:400;font-size:27px;
+    letter-spacing:.06em;margin:0 0 10px}
+  .feature p{margin:0;color:var(--ink-2);font-size:15px}
+  .feature ul{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:7px}
+  .feature li{font-size:13.5px;color:var(--ink-3);display:flex;gap:9px}
+  .feature li::before{content:"";width:4px;height:4px;border-radius:50%;
+    background:var(--blue);margin-top:9px;flex:none}
+  .feature .art{display:grid;place-items:center;padding:32px;
+    border-left:1px solid var(--line);
+    background:radial-gradient(120% 90% at 82% 8%,rgba(214,229,238,.8),transparent 60%),
+               radial-gradient(120% 100% at 8% 92%,rgba(207,224,220,.85),transparent 62%),
+               #f4f9fb}
+  .feature.flip .txt{order:2}
+  .feature.flip .art{order:1;border-left:0;border-right:1px solid var(--line)}
+  .panel{width:100%;max-width:330px;border-radius:18px;background:rgba(252,254,255,.94);
+    border:1px solid var(--line);box-shadow:0 26px 44px -32px rgba(21,36,48,.5);padding:15px}
+  .panel .ttl{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .panel .ttl b{font-family:var(--font-display);font-weight:400;font-size:13.5px;letter-spacing:.09em}
+  .panel .ttl span{font-size:10px;color:var(--ink-3)}
+
+  /* 提示 */
+  .note{display:flex;gap:16px;align-items:center;margin-top:20px;
+    border-radius:20px;padding:20px 24px;
+    background:rgba(43,92,122,.06);border:1px solid rgba(43,92,122,.2)}
+  .note b{font-family:var(--font-display);font-weight:400;font-size:16px;letter-spacing:.06em;color:var(--blue-deep)}
+  .note span{font-size:13.5px;color:var(--ink-2)}
+
+  /* 下载 */
+  .dl{position:relative;overflow:hidden;text-align:center;border-radius:var(--r);
+    padding:68px 28px 60px;
+    background:
+      radial-gradient(90% 120% at 12% 0%,rgba(207,224,220,.95),transparent 58%),
+      radial-gradient(90% 120% at 88% 4%,rgba(214,229,238,.95),transparent 60%),
+      linear-gradient(180deg,#f9fcfd,#e9f0f3);
+    border:1px solid var(--line);
+    box-shadow:0 50px 90px -64px rgba(21,36,48,.6)}
+  .dl::after{content:"海";position:absolute;left:-20px;bottom:-88px;
+    font-family:var(--font-display);font-size:300px;line-height:1;
+    color:rgba(21,36,48,.04);pointer-events:none}
+  .dl h2{font-family:var(--font-display);font-weight:400;
+    font-size:clamp(28px,4vw,42px);letter-spacing:.06em;margin:0}
+  .dl p{max-width:440px;margin:14px auto 0;color:var(--ink-2);font-size:14.5px}
+  .dl .acts{margin-top:28px}
+  .dl-meta{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+  .dl-meta span{font-size:12px;color:var(--ink-3);border:1px solid var(--line);
+    border-radius:999px;padding:4px 12px;background:rgba(252,254,255,.7)}
+
+  footer{margin-top:72px;border-top:1px solid var(--line);padding:30px 0 48px}
+  .foot{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;
+    font-size:12.5px;color:var(--ink-3)}
+  .foot a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--line)}
+  .foot a:hover{color:var(--blue);border-color:var(--blue)}
+
+  /* 入场 */
+  .reveal{opacity:0;transform:translateY(18px);
+    transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  .d1{transition-delay:.08s}.d2{transition-delay:.16s}
+
+  /* 平板 */
+  @media (max-width:1024px){
+    .phones{height:430px}
+    .phone{width:228px;height:390px}
+    .phone.left{transform:rotate(-5deg) translate(18px,20px) scale(.93)}
+    .phone.right{transform:rotate(5deg) translate(-18px,20px) scale(.93)}
+    .feature{grid-template-columns:1fr}
+    .feature .txt{padding:36px 34px 10px}
+    .feature .art{border-left:0;border-top:1px solid var(--line);padding:28px}
+    .feature.flip .txt{order:1}
+    .feature.flip .art{order:2;border-right:0}
+    .feature ul{display:none}
+  }
+  /* 手机 */
+  @media (max-width:700px){
+    .wrap{padding:0 18px}
+    .bar nav a:not(.pill){display:none}
+    .hero{padding:40px 0 0}
+    section{padding:64px 0 0}
+    h1{letter-spacing:.04em}
+    .hero p.sub{font-size:15px}
+    .acts .pill{flex:1 1 100%;justify-content:center}
+    .stage{padding:30px 14px 0;margin-top:34px}
+    .phones{height:330px}
+    .phone.left,.phone.right{display:none}
+    .phone{width:198px;height:336px;border-radius:22px;padding:10px 8px}
+    .tt .c,.tt .b{height:24px;border-radius:5px}
+    .row{padding:7px 9px;margin-bottom:5px}
+    .sum div{padding:6px;border-radius:8px}
+    .feature .txt{padding:28px 24px 6px}
+    .feature h3{font-size:22px}
+    .feature .art{padding:22px}
+    .note{flex-direction:column;align-items:flex-start;gap:6px;padding:18px 20px}
+    .dl{padding:48px 18px 44px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important;animation:none!important}
+    .reveal{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#top"><span class="mark">海</span><b>海畔</b></a>
+    <nav>
+      <a href="#features">功能</a>
+      <a href="#network">网络</a>
+      <a class="pill" href="#download">下载</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" style="padding-top:60px">
+    <div class="wrap">
+      <h1 class="reveal">掌上教务</h1>
+      <p class="sub reveal d1">课表、成绩、考试、空教室，一屏看完。</p>
+      <div class="acts reveal d2">
+        <a class="pill" id="dl-hero" href="#download">下载安装包</a>
+      </div>
+      <p class="meta reveal d2">1.0.1 · Android 8.0+ · 约 23 MB</p>
+
+      <div class="stage reveal d1">
+        <div class="phones">
+          <div class="phone left">
+            <span class="notch"></span>
+            <div class="pin">
+              <div class="ph-head"><b>成绩</b><span>2026 上</span></div>
+              <div class="ph-body">
+                <div class="sum"><div><span>学分</span><strong>21.5</strong></div><div><span>绩点</span><strong>3.72</strong></div></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><div class="s">92</div></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><div class="s">88</div></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><div class="s">95</div></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><div class="s">84</div></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><div class="s">90</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone mid">
+            <span class="notch"></span>
+            <div class="pin">
+              <div class="ph-head"><b>课表</b><span>第 12 周</span></div>
+              <div class="ph-body">
+                <div class="tt">
+                  <div class="h"></div><div class="h"></div><div class="h"></div><div class="h"></div><div class="h"></div>
+                  <div class="c"></div><div class="b b1"></div><div class="c"></div><div class="b b2"></div><div class="c"></div>
+                  <div class="b b3"></div><div class="b b1"></div><div class="c"></div><div class="b b2"></div><div class="b b4"></div>
+                  <div class="b b3"></div><div class="c"></div><div class="b b1"></div><div class="c"></div><div class="b b2"></div>
+                  <div class="c"></div><div class="b b4"></div><div class="b b3"></div><div class="b b1"></div><div class="c"></div>
+                  <div class="b b1"></div><div class="c"></div><div class="b b2"></div><div class="c"></div><div class="b b3"></div>
+                  <div class="c"></div><div class="b b2"></div><div class="c"></div><div class="b b4"></div><div class="c"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="phone right">
+            <span class="notch"></span>
+            <div class="pin">
+              <div class="ph-head"><b>空教室</b><span>周三 5-6 节</span></div>
+              <div class="ph-body">
+                <div class="chips"><i class="on"></i><i></i><i class="on"></i></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><em>可用</em></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><em>可用</em></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><em class="off">占用</em></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><em>可用</em></div>
+                <div class="row"><div class="bar"><i></i><u></u></div><em class="off">占用</em></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="head reveal">
+        <h2>功能</h2>
+        <p>只保留每天会用到的东西。</p>
+      </div>
+
+      <article class="feature reveal">
+        <div class="txt">
+          <h3>课表</h3>
+          <p>周视图、学期切换、实践课标注，离线缓存秒开。</p>
+          <ul><li>课程提醒点击直达</li><li>断网也能查看</li></ul>
+        </div>
+        <div class="art">
+          <div class="panel">
+            <div class="ttl"><b>本周课表</b><span>12 周</span></div>
+            <div class="tt">
+              <div class="h"></div><div class="h"></div><div class="h"></div><div class="h"></div><div class="h"></div>
+              <div class="c"></div><div class="b b1"></div><div class="c"></div><div class="b b2"></div><div class="c"></div>
+              <div class="b b3"></div><div class="b b1"></div><div class="c"></div><div class="b b2"></div><div class="b b4"></div>
+              <div class="b b3"></div><div class="c"></div><div class="b b1"></div><div class="c"></div><div class="b b2"></div>
+              <div class="c"></div><div class="b b4"></div><div class="b b3"></div><div class="b b1"></div><div class="c"></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feature flip reveal">
+        <div class="txt">
+          <h3>成绩与考试</h3>
+          <p>绩点汇总、单科构成、考试倒计时。</p>
+          <ul><li>平时 / 期末 / 总评</li><li>考试提前提醒</li></ul>
+        </div>
+        <div class="art">
+          <div class="panel">
+            <div class="ttl"><b>考试成绩</b><span>2026 上</span></div>
+            <div class="cd"><b>12</b><span>天后开考</span></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><div class="s">92</div></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><div class="s">88</div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feature reveal">
+        <div class="txt">
+          <h3>空教室</h3>
+          <p>按校区、周次、节次筛选，常用教室可收藏。</p>
+          <ul><li>多条件组合查询</li><li>收藏置顶</li></ul>
+        </div>
+        <div class="art">
+          <div class="panel">
+            <div class="ttl"><b>空教室</b><span>周三 5-6 节</span></div>
+            <div class="chips"><i class="on"></i><i></i><i class="on"></i></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><em>可用</em></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><em>可用</em></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><em class="off">占用</em></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="feature flip reveal">
+        <div class="txt">
+          <h3>桌面与提醒</h3>
+          <p>桌面课表组件，上课与考试走系统闹钟。</p>
+          <ul><li>两种组件样式</li><li>离线准时提醒</li></ul>
+        </div>
+        <div class="art">
+          <div class="panel">
+            <div class="ttl"><b>今日</b><span>周三</span></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><div class="s" style="font-size:12px;color:var(--ink-2)">10:15</div></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><div class="s" style="font-size:12px;color:var(--ink-2)">14:30</div></div>
+            <div class="row"><div class="bar"><i></i><u></u></div><div class="s" style="font-size:12px;color:var(--ink-2)">19:30</div></div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="network">
+    <div class="wrap">
+      <div class="head reveal">
+        <h2>网络</h2>
+      </div>
+      <div class="note reveal">
+        <b>建议使用校园网</b>
+        <span>校内自动直连；校外需联系管理员开通公网通道，速度略慢。</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="dl reveal">
+        <h2>下载海畔</h2>
+        <p>镜像加速直链，覆盖安装保留课表缓存与登录状态。</p>
+        <div class="acts">
+          <a class="pill" id="dl-main" href="#">镜像加速下载</a>
+          <a class="pill ghost" id="dl-origin" href="#">GitHub</a>
+        </div>
+        <div class="dl-meta">
+          <span>1.0.1</span><span>Android 8.0+</span><span>arm64 / armv7</span><span>约 23 MB</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>非官方客户端 · 数据仅存本机 · 由个人开发维护</span>
+    <span><a id="foot-repo" href="#">GitHub</a> · <a id="foot-release" href="#">Releases</a></span>
+  </div>
+</footer>
+
+<script>
+  const REPO='QingYu327/HaiPan', TAG='v1.0.1', ASSET='haipan-app-release.apk';
+  const origin=`https://github.com/${REPO}/releases/download/${TAG}/${ASSET}`;
+  const mirrored='https://v6.gh-proxy.org/'+origin;
+
+  document.getElementById('dl-hero').href=mirrored;
+  document.getElementById('dl-main').href=mirrored;
+  document.getElementById('dl-origin').href=origin;
+  document.getElementById('foot-repo').href=`https://github.com/${REPO}`;
+  document.getElementById('foot-release').href=`https://github.com/${REPO}/releases`;
+
+  const io=new IntersectionObserver((es)=>{
+    es.forEach((e)=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+  },{rootMargin:'0px 0px -6% 0px',threshold:.06});
+  document.querySelectorAll('.reveal').forEach((el)=>io.observe(el));
+  requestAnimationFrame(()=>{
+    document.querySelectorAll('.hero .reveal').forEach((el)=>{
+      if(el.getBoundingClientRect().top<window.innerHeight) el.classList.add('in');
+    });
+  });
+</script>
+</body>
+</html>
