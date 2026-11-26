@@ -634,8 +634,9 @@
 </footer>
 
 <script>
-  const REPO='QingYu327/HaiPan', TAG='v1.0.1', ASSET='haipan-app-release.apk';
-  const origin=`https://github.com/${REPO}/releases/download/${TAG}/${ASSET}`;
+  /* 下载地址跟随 latest：以后发新 Release 只要资产同名，链接自动指向最新包 */
+  const REPO='QingYu327/HaiPan', ASSET='haipan-app-release.apk';
+  const origin=`https://github.com/${REPO}/releases/latest/download/${ASSET}`;
   const mirrored='https://v6.gh-proxy.org/'+origin;
   document.getElementById('dl-hero').href=mirrored;
   document.getElementById('dl-main').href=mirrored;
