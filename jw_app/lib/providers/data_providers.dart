@@ -505,10 +505,20 @@ final appAccessProvider = FutureProvider.autoDispose<bool>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session.status != SessionStatus.loggedIn) return true;
   // 校园网直连（未启用公网通道）不做名单校验
-  if (!ref.watch(campusTunnelProvider).isPublicNetwork) {
+  final tunnel = ref.watch(campusTunnelProvider);
+  if (!tunnel.isPublicNetwork) {
     AppLog.d('准入', '校园网直连，跳过公网准入校验');
     return true;
   }
+  // 名单未通过时现场复核一次校内直连：探测失败被误判成校外时不至于挡住校园网用户
+  Future<bool> deny() async {
+    if (await tunnel.probeCampusNow()) {
+      AppLog.w('准入', '名单未通过，但校内直连可达，按校园网放行');
+      return true;
+    }
+    return false;
+  }
+
   final xh = session.student.xh.trim().isEmpty
       ? session.savedUsername.trim()
       : session.student.xh.trim();
@@ -520,7 +530,7 @@ final appAccessProvider = FutureProvider.autoDispose<bool>((ref) async {
   if (cached != null) {
     AppLog.d('准入', '使用缓存结果 ${cached ? '通过' : '拒绝'}');
     unawaited(UsageTracker.fetchGates(xh).catchError((_) => <String, bool>{}));
-    return cached;
+    return cached ? true : await deny();
   }
 
   // 首次使用（无缓存）必须在线校验，超时按拒绝处理
@@ -529,10 +539,11 @@ final appAccessProvider = FutureProvider.autoDispose<bool>((ref) async {
     final gates = await UsageTracker.fetchGates(xh)
         .timeout(const Duration(seconds: 6));
     AppLog.d('准入', '在线校验 ${sw.elapsedMilliseconds}ms');
-    return gates[UsageTracker.gateApp] ?? false;
+    if (gates[UsageTracker.gateApp] == true) return true;
+    return await deny();
   } catch (_) {
-    AppLog.w('准入', '在线校验失败 ${sw.elapsedMilliseconds}ms，按拒绝处理');
-    return false;
+    AppLog.w('准入', '在线校验失败 ${sw.elapsedMilliseconds}ms');
+    return await deny();
   }
 });
 
