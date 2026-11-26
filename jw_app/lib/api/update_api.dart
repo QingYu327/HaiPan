@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 const appVersion = '1.0.1';
 
 /// 当前构建号（与 pubspec.yaml 的 +N 一致），Release tag 形如 v1.0.1+4143
-const appBuild = 4143;
+const appBuild = 4144;
 
 /// 展示用完整版本号
 const appVersionLabel = '$appVersion+$appBuild';
@@ -41,8 +41,8 @@ class UpdateApi {
     final tagName = '${data['tag_name'] ?? ''}'.trim();
     final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
     if (version.isEmpty) return ('', '', '', '');
-    // 版本比对：主版本按数字段比较；主版本相同再比构建号（tag 里的 +N）
-    final pa = _numbers(version);
+    // 版本比对：先只比主版本数字段（忽略 +构建号），主版本相同再比构建号
+    final pa = _numbers(version.split('+').first);
     final pb = _numbers(appVersion);
     var newer = false;
     for (var i = 0; i < pa.length || i < pb.length; i++) {
