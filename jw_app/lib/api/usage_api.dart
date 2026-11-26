@@ -184,16 +184,10 @@ class UsageTracker {
         data: {'xh': xh, 'publicKey': pub},
       );
     } on DioException catch (e) {
-      final s = e.response?.statusCode;
       final denied = e.response == null ? null : _deniedOf(e.response!);
       if (denied != null) throw denied;
-      if (s == 403) {
-        throw AccessDeniedException('not_allowed', '该学号未开通公网通道，请使用校园网登录或联系管理员');
-      }
-      if (s == 409) {
-        throw AccessDeniedException(
-            'device_mismatch', '该学号已绑定其他设备，请先在网页登录或联系管理员重置');
-      }
+      // 只看服务端明确给出的业务错误码；网关/限流返回的裸 403 不能当成名单拒绝，
+      // 否则校园网或代理链路上的拦截会被误报成「未开通公网通道」。
       rethrow;
     }
     // 有的入口用 200 + error 字段表示拒绝
@@ -321,7 +315,15 @@ class UsageTracker {
     final id = xh.trim();
     if (id.isEmpty) return false;
     if (id == ownerXh) return true;
-    final r = await _authed('GET', '$_backendUrl/gates', xh: id);
+    Response<dynamic> r;
+    try {
+      r = await _authed('GET', '$_backendUrl/gates', xh: id);
+    } on DioException catch (e) {
+      // 只有服务端明确返回业务错误码才算拒绝，其余按网络异常上抛
+      final denied = e.response == null ? null : _deniedOf(e.response!);
+      if (denied != null) throw denied;
+      rethrow;
+    }
     final denied = _deniedOf(r);
     if (denied != null) throw denied;
     final d = r.data;

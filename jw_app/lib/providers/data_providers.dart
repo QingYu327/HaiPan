@@ -7,6 +7,7 @@ import '../api/jw_apis.dart';
 import '../api/usage_api.dart';
 import '../models/models.dart';
 import '../util/app_log.dart';
+import '../util/campus_tunnel.dart';
 import '../util/home_widget.dart';
 import '../util/local_cache.dart';
 import '../util/refresh_gate.dart';
@@ -498,11 +499,16 @@ final featureGatesProvider = FutureProvider.autoDispose<Map<String, bool>>((
   return UsageTracker.fetchGates(xh);
 });
 
-/// APP 整体准入：新登录用户默认禁止，管理员在「APP 准入名单」中开通后可用。
+/// APP 整体准入：仅在公网通道下校验名单，校园网直连不拦截。
 /// 未登录/游客不在此拦截；开发者恒放行；离线回退上次成功结果。
 final appAccessProvider = FutureProvider.autoDispose<bool>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session.status != SessionStatus.loggedIn) return true;
+  // 校园网直连（未启用公网通道）不做名单校验
+  if (!ref.watch(campusTunnelProvider).isPublicNetwork) {
+    AppLog.d('准入', '校园网直连，跳过公网准入校验');
+    return true;
+  }
   final xh = session.student.xh.trim().isEmpty
       ? session.savedUsername.trim()
       : session.student.xh.trim();

@@ -49,6 +49,11 @@ class CampusTunnel {
   bool get isRunning => _server != null;
   int? get port => _port;
 
+  /// 本次自适应是否判定为「需要公网通道」。
+  /// 校园网直连为 false —— 公网准入名单只对通道用户生效。
+  bool _public = false;
+  bool get isPublicNetwork => _public || isRunning;
+
   /// 仅放行教务相关域名，和后端白名单保持一致。
   static const Map<String, Set<int>> _targets = {
     'jw.gdou.edu.cn': {80, 443},
@@ -64,12 +69,19 @@ class CampusTunnel {
     // 等客户端读完持久化的通道模式，避免刚启动时误建隧道
     await client.ready;
     // 官方 WebVPN 通道下所有请求都走 wfw 反代，不需要本地隧道
-    if (client.wfwMode) return false;
+    if (client.wfwMode) {
+      _public = false;
+      return false;
+    }
     final known = (xh ?? '').trim();
     if (known.isNotEmpty) _fallbackXh = known;
     // 没有学号无法做设备认证，等登录页补录后再启用
-    if (_fallbackXh.isEmpty) return false;
+    if (_fallbackXh.isEmpty) {
+      _public = false;
+      return false;
+    }
     if (isRunning) {
+      _public = true;
       client.setProxyPort(_port!);
       await WebViewProxy.set(_port!);
       // 已有通道时顺手预热一次（30s 内不重复），省掉后续首次握手
@@ -79,6 +91,7 @@ class CampusTunnel {
     // 移动数据下直连校园网必然失败，直接建通道，省掉每次 4s 的探测等待；
     // Wi-Fi 仍先试直连，校内网络可以零通道使用。
     if (await NetworkInfo.isCellularOnly()) {
+      _public = true;
       final p = await ensureStarted();
       client.setProxyPort(p, force: true);
       await WebViewProxy.set(p);
@@ -86,7 +99,11 @@ class CampusTunnel {
       if (warm) unawaited(client.warmUp());
       return true;
     }
-    if (await _directReachable()) return false;
+    if (await _directReachable()) {
+      _public = false;
+      return false;
+    }
+    _public = true;
     final p = await ensureStarted();
     // 新建通道后强制换连接池：旧端口留下的 socket 已不可用
     client.setProxyPort(p, force: true);
@@ -145,6 +162,10 @@ class CampusTunnel {
   bool? _directOk;
   DateTime? _directAt;
   Future<bool>? _directProbe;
+
+  /// 现场复核校内直连（绕过 10 分钟缓存）。
+  /// 用于「被判定为校外、但准入拒绝」时纠偏：确实在校内就应当放行。
+  Future<bool> probeCampusNow() => _probeDirect();
 
   /// 启动本地代理（重复调用返回同一端口）。
   Future<int> ensureStarted() async {

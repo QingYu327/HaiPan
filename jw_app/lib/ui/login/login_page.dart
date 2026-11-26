@@ -141,16 +141,16 @@ class _LoginPageState extends ConsumerState<LoginPage>
           try {
             await UsageTracker.checkAllowed(authXh);
           } on AccessDeniedException catch (e) {
-            // 服务端明确拒绝：直接按未授权处理，不能降级成网络错误
-            throw AuthException(e.message);
-          } on DioException catch (e) {
-            final s = e.response?.statusCode;
-            if (s == 403 || s == 409) {
-              throw AuthException(_tunnelError(e));
+            // 校内探测偶发失败会误建通道：先现场复核直连，确实在校内就放行
+            if (e.code == 'not_allowed' && await tunnel.probeCampusNow()) {
+              AppLog.w('登录', '准入拒绝但校内直连可达，按校园网放行');
+            } else {
+              throw AuthException(e.message);
             }
+          } on DioException catch (e) {
+            // 校验接口不可达时不拦登录，交给后续真实请求判断
             AppLog.w('登录', '准入校验跳过：$e');
           } catch (e) {
-            // 校验接口不可达时不拦登录，交给后续真实请求判断
             AppLog.w('登录', '准入校验跳过：$e');
           }
         }

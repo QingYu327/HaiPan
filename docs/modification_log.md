@@ -11,6 +11,33 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-26 · Batch81：校园网误报白名单修复 + 导航 GitHub 图标（build 4141）
+
+### 问题定位（学号 202411621227 反馈：校园网直连仍弹「未开通公网通道」）
+核查 NAS 数据与容器日志：
+- `haipan.json`：该学号在登录名单、在 `allow_app` 白名单、设备已登记；
+- 容器日志：16:45:34 `mux open 20********27` → 16:45:45 `mux close (streams=2, rejected=0)`，
+  即 App 当时**建了隧道**（说明被判定为校外），且没有任何隧道级拒绝或 guard 拦截记录。
+结论：服务端没有该学号的名单拒绝记录，误报来自客户端口径与判定。
+
+### 修复
+1. `appAccessProvider` 原本对所有人强制校验名单，校园网用户一旦 `gates` 请求失败
+   （超时/入口不可达）就按拒绝处理 → 无权限页。现改为：`CampusTunnel.isPublicNetwork`
+   为 false（校园直连）时直接放行，不做名单校验。
+2. `CampusTunnel.adapt()` 显式记录本次判定（`_public`），校园直连/wfw/无学号置 false，
+   建隧道置 true；新增 `probeCampusNow()` 现场复核（绕过 10 分钟缓存）。
+3. `UsageTracker._authenticateAt` 与 `checkAllowed` 只认服务端 JSON 里的
+   `error=not_allowed / device_mismatch`；网关、限流、代理返回的裸 403 不再被误报成
+   「未开通公网通道」，改按网络错误处理。
+4. 登录页遇 `not_allowed` 时先 `probeCampusNow()`，确实在校内则放行并记日志。
+
+### 官网
+- 右上角补回 GitHub 仓库图标（与明暗切换并排），链接同 `REPO` 常量。
+
+### 发布
+- `1.0.1+4141` 已构建并替换两个仓库资产（SHA-256 `56c84b87…0373`）；
+  无线 adb 端口失效，未装机。
+
 ## 2026-11-26 · Batch80：关于页简介定稿 + 官网免责声明（build 4140）
 
 ### 关于页（`about_page.dart`）
