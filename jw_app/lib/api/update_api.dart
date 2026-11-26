@@ -1,20 +1,54 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// 当前应用版本（与 pubspec.yaml version 保持一致）
-const appVersion = '1.0.1';
+import '../util/build_info.dart';
 
-/// 当前构建号（与 pubspec.yaml 的 +N 一致），Release tag 形如 v1.0.1+4143
-const appBuild = 4144;
-
-/// 展示用完整版本号
-const appVersionLabel = '$appVersion+$appBuild';
+/// 当前安装包的版本信息（以原生 appInfo 为准，避免与构建号漂移）
+String get appVersion => BuildInfo.version;
+int get appBuild => BuildInfo.build;
+String get appVersionLabel => BuildInfo.label;
 
 /// GitHub 发布仓库（owner/repo）：公开仓库只放文档与主要源码，APK 走 Release
 const githubRepo = 'QingYu327/HaiPan';
 
 /// GitHub 加速镜像前缀（默认使用；下载失败时回退直连）
 const defaultGhMirror = 'https://v6.gh-proxy.org/';
+
+/// 一次更新检查的结果。
+///
+/// 把「是否有更新」和「Release 是否就是当前构建」显式分开：
+/// 首页只根据 [hasUpdate] 决定弹窗，更新页用 [isCurrent] 展示发布说明。
+class UpdateCheckResult {
+  const UpdateCheckResult({
+    required this.version,
+    required this.notes,
+    required this.releaseUrl,
+    required this.downloadUrl,
+    required this.hasUpdate,
+    required this.isCurrent,
+  });
+
+  /// Release tag 去掉 v 前缀，如 1.0.1+4145
+  final String version;
+  final String notes;
+  final String releaseUrl;
+  final String downloadUrl;
+
+  /// 服务端存在比当前安装包更高的版本
+  final bool hasUpdate;
+
+  /// 服务端最新 Release 就是当前安装的构建
+  final bool isCurrent;
+
+  static const UpdateCheckResult none = UpdateCheckResult(
+    version: '',
+    notes: '',
+    releaseUrl: '',
+    downloadUrl: '',
+    hasUpdate: false,
+    isCurrent: false,
+  );
+}
 
 /// GitHub Release 检查更新（公共仓库，无需鉴权；
 /// 注意不要在客户端嵌入 token，APK 可被反编译）
@@ -26,24 +60,28 @@ class UpdateApi {
     headers: {'Accept': 'application/vnd.github+json'},
   ));
 
-  /// 返回空串 = 已是最新；否则返回 (最新版本号, 发布说明, 发布页, APK 直链)
-  Future<(String version, String notes, String url, String downloadUrl)>
-      checkLatest() async {
+  Future<UpdateCheckResult> checkLatest() async {
+    // 运行版本从安装包读取；首次调用时等待读取完成
+    await BuildInfo.ensureLoaded();
+    final currentVersion = BuildInfo.version;
+    final currentBuild = BuildInfo.build;
+
     late final Map<String, dynamic> data;
     try {
       final resp = await _dio.get('/repos/$githubRepo/releases/latest');
       data = Map<String, dynamic>.from(resp.data as Map);
     } on DioException catch (e) {
       // 仓库还没有发布任何 Release 时 GitHub 返回 404，按“无更新”处理
-      if (e.response?.statusCode == 404) return ('', '', '', '');
+      if (e.response?.statusCode == 404) return UpdateCheckResult.none;
       rethrow;
     }
     final tagName = '${data['tag_name'] ?? ''}'.trim();
     final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
-    if (version.isEmpty) return ('', '', '', '');
+    if (version.isEmpty) return UpdateCheckResult.none;
+
     // 版本比对：先只比主版本数字段（忽略 +构建号），主版本相同再比构建号
     final pa = _numbers(version.split('+').first);
-    final pb = _numbers(appVersion);
+    final pb = _numbers(currentVersion.split('+').first);
     var newer = false;
     for (var i = 0; i < pa.length || i < pb.length; i++) {
       final x = i < pa.length ? pa[i] : 0;
@@ -53,19 +91,27 @@ class UpdateApi {
         break;
       }
     }
-    if (!newer && _sameCore(version, appVersion)) {
-      newer = _buildOf(version) > appBuild;
+    if (!newer && _sameCore(version, currentVersion)) {
+      newer = _buildOf(version) > currentBuild;
     }
 
+    final notes = _notesOf(data);
+
     if (!newer) {
-      // 非更新版本：与当前构建一致时返回更新日志，供页面展示并置灰按钮
-      if (_sameCore(version, appVersion) && _buildOf(version) == appBuild) {
-        var notes = '${data['body'] ?? ''}'.trim();
-        if (notes.length > 800) notes = '${notes.substring(0, 800)}…';
-        return (version, notes, '', ''); // downloadUrl 空 → 按钮置灰
-      }
-      return ('', '', '', '');
+      // 只有 tag 与安装包完全一致时才返回发布说明，供更新页置灰展示
+      final sameBuild = _sameCore(version, currentVersion) &&
+          _buildOf(version) == currentBuild;
+      if (!sameBuild) return UpdateCheckResult.none;
+      return UpdateCheckResult(
+        version: version,
+        notes: notes,
+        releaseUrl: '${data['html_url'] ?? ''}',
+        downloadUrl: '',
+        hasUpdate: false,
+        isCurrent: true,
+      );
     }
+
     final url = '${data['html_url'] ?? ''}';
     // 取 release assets 里的第一个 APK 直链
     var downloadUrl = '';
@@ -80,17 +126,25 @@ class UpdateApi {
         }
       }
     } catch (_) {}
+
+    return UpdateCheckResult(
+      version: version,
+      notes: notes,
+      releaseUrl: url,
+      downloadUrl: downloadUrl,
+      hasUpdate: true,
+      isCurrent: false,
+    );
+  }
+
+  String _notesOf(Map<String, dynamic> data) {
     var notes = '${data['body'] ?? ''}'.trim();
     if (notes.length > 800) notes = '${notes.substring(0, 800)}…';
-    return (version, notes, url, downloadUrl);
+    return notes;
   }
 }
 
 final updateApiProvider = Provider<UpdateApi>((ref) => UpdateApi());
-
-/// 该 Release 版本是否就是当前安装的构建
-bool isCurrentRelease(String v) =>
-    _sameCore(v, appVersion) && _buildOf(v) == appBuild;
 
 /// 取版本号里的数字段（1.0.1+4143 → [1,0,1,4143]）
 List<int> _numbers(String v) =>

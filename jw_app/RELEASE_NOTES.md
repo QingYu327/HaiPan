@@ -1,4 +1,7 @@
 # v1.0.0 · 海畔（haipan）
+# 海畔 v1.0.0 发布说明（历史）
+
+> 本文仅保留 v1.0.0 首发记录；当前版本与更新日志见根 [README.md](../README.md) 与 [docs/release_notes_v1.0.1.md](../docs/release_notes_v1.0.1.md)。
 
 广东海洋大学教务系统第三方客户端首发版。
 

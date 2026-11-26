@@ -149,11 +149,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
     }
     try {
       final r = await ref.read(updateApiProvider).checkLatest();
-      if (!mounted || r.$1.isEmpty || r.$4.isEmpty) return;
-      AppLog.d('更新', '启动检测到新版本 v${r.$1}');
+      if (!mounted || !r.hasUpdate || r.downloadUrl.isEmpty) return;
+      AppLog.d('更新', '启动检测到新版本 v${r.version}（当前 v$appVersionLabel）');
       final go = await showInkDialog(
         context,
-        title: '发现新版本 v${r.$1}',
+        title: '发现新版本 v${r.version}',
         message: '修复问题并改进使用体验，是否前往更新？',
         cancelText: '稍后',
         confirmText: '去更新',

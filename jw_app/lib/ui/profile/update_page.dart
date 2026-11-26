@@ -24,7 +24,7 @@ class UpdatePage extends ConsumerStatefulWidget {
 class _UpdatePageState extends ConsumerState<UpdatePage> {
   bool _done = false;
   String? _error;
-  (String, String, String, String)? _result;
+  UpdateCheckResult? _result;
 
   @override
   void initState() {
@@ -55,7 +55,12 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
     try {
       final r = await api.checkLatest();
       if (!mounted) return;
-      AppLog.d('更新', r.$1.isEmpty ? '检查更新：已是最新 v$appVersion' : '检查更新：发现新版 v${r.$1}');
+      AppLog.d(
+        '更新',
+        r.hasUpdate
+            ? '检查更新：发现新版 v${r.version}（当前 v$appVersionLabel）'
+            : '检查更新：已是最新 v$appVersionLabel',
+      );
       setState(() {
         _done = true;
         _result = r;
@@ -73,7 +78,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
   Future<void> _download() async {
     final r = _result;
     if (r == null) return;
-    final (version, _, _, downloadUrl) = r;
+    final version = r.version;
+    final downloadUrl = r.downloadUrl;
     if (downloadUrl.isEmpty) {
       showInkToast(context, '未找到 APK 下载链接', error: true);
       return;
@@ -135,7 +141,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       );
     } else {
       final r = _result;
-      if (r == null || r.$1.isEmpty) {
+      if (r == null || r.version.isEmpty) {
         content = Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -148,13 +154,13 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
             ],
           ),
         );
-      } else if (isCurrentRelease(r.$1)) {
+      } else if (r.isCurrent) {
         content = _VersionNotes(
           icon: AppIcons.success,
           iconTone: InkTone.success,
           title: '当前已是最新版本',
           versionText: 'v$appVersionLabel',
-          notes: r.$2,
+          notes: r.notes,
           action: SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -165,7 +171,9 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           ),
         );
       } else {
-        final (version, notes, _, downloadUrl) = r;
+        final version = r.version;
+        final notes = r.notes;
+        final downloadUrl = r.downloadUrl;
         content = _VersionNotes(
           icon: AppIcons.update,
           iconTone: InkTone.info,

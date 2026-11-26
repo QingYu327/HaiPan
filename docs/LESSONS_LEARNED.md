@@ -137,3 +137,13 @@
 
 ### 6.4 真机与模拟器要分清架构
 - arm64 包不能装进 x86 模拟器（`UnsatisfiedLinkError`）；模拟器验证用 `android-x64`。
+
+### 6.5 版本判断必须用安装包实际构建号
+- 手写 `appVersion` / `appBuild` 会与 `--build-number`、Release tag 漂移；漏改一次，已是最新的用户就会被提示更新。
+- 现行：`BuildInfo` 从原生 `appInfo` 读取 `versionName` / `versionCode`；`UpdateCheckResult` 用 `hasUpdate` / `isCurrent` 显式表达结果，首页只在 `hasUpdate && downloadUrl` 时弹窗。
+- 发布前跑 `tool/check_version.ps1 -Tag v<版本>+<构建号>`；不要在同一个 tag 下替换不同构建的 APK。
+
+### 6.6 静态官网也要按页面验收
+- 单页拆成多页后，桌面导航与移动端菜单都要检查文档/注意事项入口；≤860px 用菜单按钮收纳，不能只靠会被隐藏的桌面链接。
+- 资源路径用相对路径（`assets/...`），三页共享 `pages.css` / `pages.js`；上线前检查 `scrollWidth == clientWidth`、无破图、无重复 ID、控制台无报错。
+- 官网部署仓库与 App 仓库的 `site/` 要同步，避免 Netlify 拉到的版本与本地不一致。

@@ -2,7 +2,7 @@
 
 > 依据实时抓包与源码逆向整理（教务系统 `jw.gdou.edu.cn`，`gnmkdm=N253512`）。
 > 用途：实现 App「抢课」功能的课程列表 / 教学班 / 选课提交。
-> 逆向原始材料见 [../api-captures/](../api-captures/INDEX.md)（`zzxkYzb.js`、`choosedZy.js`、`zy.js` 等）。
+> 逆向原始材料已在 2026-11 清理，不再随仓库提供；接口细节以本文与 `api-handoff/api_docs.json` 为准。
 
 ## 0. 通用约定
 - 所有接口均为 **POST**，带 `gnmkdm=N253512`（URL 查询参数）。

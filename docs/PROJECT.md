@@ -1,8 +1,8 @@
 # 海畔（jw_app）项目文档
 
-> 面向接手者与后续 AI 开发的现状说明书。所有结论均来自当前代码（`jw_app/lib`，版本 `1.0.1+4136`）。
+> 面向接手者与后续 AI 开发的现状说明书。所有结论均来自当前代码（`jw_app/lib`，版本 `1.0.1+4144`）。
 > 文中统一用「学校」代指学校名称；域名、路径等均取自代码常量，沿用原样以便检索。
-> 修改历史与逐批决策见 [`docs/modification_log.md`](modification_log.md)（最新在前，已写到 Batch76）。
+> 修改历史与逐批决策见 [`docs/modification_log.md`](modification_log.md)（最新在前，已写到 Batch85）。
 
 ---
 
@@ -18,7 +18,7 @@
 | 性质 | 非官方校园教务助手，个人开发 |
 | 数据来源 | 学校正方教务系统 + 学校统一身份认证（authserver） |
 | 联网方式 | 校内直连；校外经自建 WebSocket 隧道回到校园网 |
-| 文档基线 | `pubspec.yaml` version `1.0.1+4136` |
+| 文档基线 | `pubspec.yaml` version `1.0.1+4144` |
 
 ### 1.2 功能清单（以代码实际能力为准）
 
@@ -83,7 +83,8 @@
 | `lib/api/cas_auth.dart` | `CasAuthApi`：原生统一身份认证（prepare / 验证码 / AES 加密 / 登录 / 多因子 / 换票 / 注销） |
 | `lib/api/jw_apis.dart` | 业务接口：`TimetableApi`、`GradeApi`、`ExamApi`、`AcademicApi`、`RankApi`、`EmptyRoomApi` 及 Provider |
 | `lib/api/auth_api.dart` | `AuthApi`：教务侧登出（本地 + 服务端） |
-| `lib/api/update_api.dart` | GitHub Release 检查更新；`appVersion`、`githubRepo`、镜像前缀常量 |
+| `lib/api/update_api.dart` | GitHub Release 检查更新；`UpdateCheckResult`、`githubRepo`、镜像前缀常量 |
+| `lib/util/build_info.dart` | 从安装包原生 `appInfo` 读取 versionName / versionCode，作为唯一版本来源 |
 | `lib/api/usage_api.dart` | `UsageTracker`（设备认证、会话令牌、登录上报、云端门控）、`DeviceAuth` |
 | `lib/models/models.dart` | `StudentInfo`、`Timetable`、`CourseEntry`、`Grade`、`Exam`、学业/排名模型等 |
 | `lib/providers/session_provider.dart` | `SessionNotifier`：会话恢复、后台握手、登录完成落盘、退出、修复；`sessionExpiredSignalProvider` |
@@ -111,6 +112,7 @@
 | `lib/util/notify_target.dart` | 通知点击目标解析 |
 | `lib/util/update_downloader.dart` | APK 下载（系统 DownloadManager）与安装 |
 | `docs/` | `modification_log.md`（改批记录）、`ARCHITECTURE.md`、`LESSONS_LEARNED.md`、`PROJECT_SUMMARY.md`、`api-handoff/` 等 |
+| `site/` | 官网源文件：`index.html`、`docs.html`、`notes.html`、`assets/` |
 | `android/app/src/main/kotlin/cn/gdou/xiuhong/` | `MainActivity.kt`、小组件、通知 Receiver 等原生实现 |
 
 ---
@@ -325,8 +327,9 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 
 | 项 | 值/行为 |
 |---|---|
-| 默认入口 | `https://haipan-api.cjhong.top`（`defaultBase`） |
-| 云端下发 | GET `<base>/tunnel/endpoints` → `{endpoints:[{name,url,default}]}`，缓存到 `server.endpoints` |
+| 代码兜底入口 | `https://haipan-api.cjhong.top`（`defaultBase`） |
+| 云端当前默认 | `https://120.79.176.77:59192`（深圳节点，以 `haipan.json` 的 `defaultTunnel` 为准） |
+| 云端下发 | GET `<base>/tunnel/endpoints` → `{endpoints:[{name,url,default}]}`，缓存到 `server.endpoints`；当前含国内直连、Cloudflare、东莞、深圳四路 |
 | 健康检查 | GET `<base>/health`，4s 连接 / 6s 读超时，状态码 <500 视为可达 |
 | 隧道地址 | `wss://<host>[:port]/tunnel`（`TunnelEndpoint.wsBase`），复用通道为 `/tunnel-mux` |
 | 自动选路 | `autoSelect()`：并行测速；仅当前不可达、或快 200ms 以上、或快过 1.5 倍才切换；10 分钟内不重复 |
@@ -341,8 +344,9 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 | `githubRepo` | `QingYu327/HaiPan` |
 | 检查地址 | `https://api.github.com/repos/QingYu327/HaiPan/releases/latest` |
 | `defaultGhMirror` | `https://v6.gh-proxy.org/`（下载失败回退直连） |
-| `appVersion` | `1.0.1`（必须与 `pubspec.yaml` 的 `version` 主段一致） |
-| 版本比较 | 只取数字段逐段比较，忽略 `v` 前缀与后缀（如 `-beta`） |
+| 运行版本 | `BuildInfo.version` / `BuildInfo.build`（原生读取安装包，不手写常量） |
+| 更新结果 | `UpdateCheckResult`：`hasUpdate` 控制首页弹窗，`isCurrent` 控制更新页置灰展示 |
+| 版本比较 | 先比主版本数字段，主版本相同再比构建号；忽略 `v` 前缀与后缀（如 `-beta`） |
 | 下载资产 | Release assets 中第一个 `.apk` 的 `browser_download_url` |
 | 404 处理 | 仓库无 Release 时按「无更新」处理 |
 
@@ -352,11 +356,18 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 
 | 位置 | 当前值 | 规则 |
 |---|---|---|
-| `pubspec.yaml` `version` | `1.0.1+4136` | 正式线固定 `1.0.1`，只递增 `+` 后的构建号 |
-| `lib/api/update_api.dart` `appVersion` | `1.0.1` | 与 pubspec 主段同步 |
+| `pubspec.yaml` `version` | `1.0.1+4144` | 正式线固定 `1.0.1`，只递增 `+` 后的构建号 |
+| `lib/util/build_info.dart` | 运行时读取 | 不再维护 Dart 常量，安装包 versionName / versionCode 是唯一来源 |
 | `android/gradle.properties` | `force-version-code-ignoring-abi=true` | 强制 `versionCode` = 构建号，不加 ABI 偏移（arm64 的 +2000） |
 
 > 构建号必须大于手机上已安装包的 `versionCode`，否则 `adb install -r` 会因降级失败。
+
+### 6.4 官网与文档
+
+- 源文件：`site/index.html`（首页）、`site/docs.html`（使用文档）、`site/notes.html`（注意事项）、`site/assets/`（共享样式、脚本、APP 图标）。
+- 部署仓库：GitHub `QingYu327/haipan-website`（`main`，Netlify 自动部署）；Gitee `heaven-does-not-move/haipan-website`（`master` 镜像）。
+- 首页顶部导航在桌面显示「功能 / 网络 / 使用文档 / 注意事项」；≤860px 收起为菜单按钮，展开后仍包含文档与注意事项入口。
+- 官网下载直链依赖 Release 资产名 `haipan-app-release.apk`；版本标签需与 App 当前 `1.0.1+4144` 保持同步。
 
 ---
 
@@ -368,7 +379,8 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 cd "d:\Lime\Documents\haipan app\jw_app"
 flutter analyze                                  # 应无 issue
 flutter test                                     # 现有用例应全通过
-flutter build apk --release --target-platform android-arm64 --build-number=4116
+.\tool\check_version.ps1                          # 检查 pubspec 版本格式
+flutter build apk --release --target-platform android-arm64 --build-number=4144
 ```
 
 产物：`jw_app/build/app/outputs/flutter-apk/app-release.apk`。
@@ -378,22 +390,22 @@ flutter build apk --release --target-platform android-arm64 --build-number=4116
 ### 7.2 版本号修改位置
 
 1. `pubspec.yaml` 的 `version:`（改 `+` 后的构建号；如发布新正式版再改主段）；
-2. `lib/api/update_api.dart` 的 `appVersion`；
+2. 运行 `.\tool\check_version.ps1 -Tag v<版本>+<构建号>` 核对 tag 与 pubspec；
 3. `docs/modification_log.md` 追加当批记录（最新在最上方）。
 
 ### 7.3 GitHub Release 上传流程
 
-1. 用与 `appVersion` 一致的 tag 创建 Release（标题如「海畔 v1.0.1」）；
-2. 上传 APK，资产名可任意（如 `haipan-app-release.apk`），客户端取第一个 `.apk`；
-3. 校验 `GET /repos/QingYu327/HaiPan/releases/latest` 的 `tag_name` 与 asset 大小/摘要。
+1. 用与 `pubspec.yaml` `version` 一致的 tag 创建 Release，形如 `v1.0.1+<构建号>`；
+2. 上传 APK，资产名固定 `haipan-app-release.apk`（客户端取第一个 `.apk`，官网直链依赖该名称）；
+3. 将 Release 标记为 latest，校验 `GET /repos/QingYu327/HaiPan/releases/latest` 的 `tag_name` 与 asset 大小/摘要。
 
 ```powershell
 # 令牌只从环境变量读取，不要写进仓库或脚本
 $env:GH_TOKEN = "<YOUR_GITHUB_TOKEN>"
-gh release create v1.0.1 "build\app\outputs\flutter-apk\app-release.apk" `
-  --repo QingYu327/HaiPan --title "海畔 v1.0.1" --notes "<更新说明>"
-# 替换已有资产
-gh release upload v1.0.1 "<新APK路径>" --repo QingYu327/HaiPan --clobber
+gh release create "v1.0.1+<构建号>" "build\app\outputs\flutter-apk\app-release.apk" `
+  --repo QingYu327/HaiPan --title "海畔 v1.0.1+<构建号>" --notes "<更新说明>" --latest
+# 替换已有资产（同 tag 换包会破坏版本一致性，优先发新 tag）
+gh release upload "v1.0.1+<构建号>" "<新APK路径>" --repo QingYu327/HaiPan --clobber
 ```
 
 > 每次发版必须提升版本号并建同 tag 的 Release；客户端不内置任何 token（APK 可被反编译）。

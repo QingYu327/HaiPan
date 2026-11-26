@@ -1,6 +1,6 @@
 # backend · 云端后端（Node 20 + Docker）
 
-「海畔」的云端能力：设备认证与令牌、APP 准入白名单、更新黑名单、使用统计、公网入口下发与 WebSocket 隧道。部署在飞牛 NAS，由 Cloudflare Tunnel（主）与 ME Frp（备）对外。
+「海畔」的云端能力：设备认证与令牌、APP 准入白名单、更新黑名单、使用统计、公网入口下发与 WebSocket 隧道。部署在飞牛 NAS，对外提供国内直连 TLS、Cloudflare、东莞/深圳 FRP 多路入口，具体列表由 `/tunnel/endpoints` 下发。
 
 ## 接口
 
@@ -16,7 +16,10 @@
 | GET/POST | `/notes` | 管理员令牌 | 学号备注 |
 | POST | `/perm` | 管理员令牌 | 名单增删、重置设备 |
 | GET/POST | `/settings` | 管理员令牌 | 运行开关（设备自动换绑） |
-| WS | `/tunnel` | 令牌 | 隧道转发 |
+| WS | `/tunnel` | 令牌 | 单流隧道转发（回退模式） |
+| WS | `/tunnel-mux` | 令牌 | 多路复用隧道（默认，一条连接承载多条 TCP 流） |
+
+> 更新检查不走后端：客户端直接读 GitHub `releases/latest`；后端只负责准入、更新黑名单与隧道。
 
 ## 文件
 

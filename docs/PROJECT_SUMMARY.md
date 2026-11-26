@@ -12,12 +12,14 @@
 ## 2. 架构与关键决策
 
 - **客户端**：`jw_app/`。Riverpod 做状态（`session / settings / data_providers`），`Dio + PersistCookieJar` 走正方教务**纯 Cookie 鉴权**（无 token，靠会话）+ 本地持久化 Cookie。
-- **登录**：必须先 zfdun 滑块验证，再提交账号密码；密码用 RSA（Keystore 存），登录成功拉课表取学籍。
+- **登录**：优先原生统一身份认证表单（学号 + 密码 + 验证码 / 多因子，密码用原生 AES 加密提交）；失败时可切 WebView 认证页兜底；登录成功拉课表取学籍。校外登录经隧道加载认证页。
 - **后端**：`backend/`（Node 20 + Docker）。负责设备公钥登记、挑战签名换 30 分钟令牌、APP 准入名单与更新黑名单、学号备注、入口下发，以及 WebSocket 隧道；数据持久化在 `$DATA_DIR/haipan.json`。支持 APP 内 `POST /perm` 免发版增删名单。
+- **更新**：GitHub `releases/latest`；运行版本由 `BuildInfo` 从安装包读取，`UpdateCheckResult` 显式区分「有更新」与「就是当前构建」，首页只在 `hasUpdate && downloadUrl` 时弹窗。
+- **官网**：`site/` 三页静态站（首页 / 使用文档 / 注意事项），GitHub `QingYu327/haipan-website` 由 Netlify 自动部署，Gitee 镜像同步。
 - **设备认证**：Android Keystore 生成 EC P-256 密钥对，私钥不出安全硬件；服务端按学号绑定公钥。管理员学号在公钥不一致时允许覆盖，普通用户需管理端重置。
 - **公网访问**：校内直连；校外走「本地 CONNECT 代理 → WSS 隧道 → NAS → 校园网」。主通道 Cloudflare Tunnel、备用 ME Frp，客户端按延迟自动选路。
 - **桌面小部件**：两个原生 Provider——「今日课表」4×2、「课表 + 考试」4×3，共用 `ScheduleWidgetBase` 渲染。
-- **数据源与校准**：所有接口均从已登录网页抓包还原（见 `api-captures/` 与 `docs/api-handoff/`），不走私有文档。
+- **数据源与校准**：所有接口均从已登录网页抓包还原；权威契约与校准资料保留在 `docs/api-handoff/`，早期抓包样本目录已在 2026-11 清理。
 - **包名** `cn.gdou.xiuhong`，应用名「海畔」。
 
 ## 3. 实测得出的重要经验（务必记住）
@@ -70,21 +72,28 @@
 - 免费/公网隧道往返常超 1000ms：连接池复用、预热、刷新闸门比“每次重建”更有效；永久错误应快速失败，避免重试风暴。
 - 关闭时序必须 flush → Close 帧 → `end()`，否则会丢教务 302 的末尾数据。
 
+### 3.11 版本判断不能依赖手写常量
+- 曾把 `appVersion` / `appBuild` 写在 Dart 源码里，构建号与 Release tag 靠人工同步；一旦漏改，已是最新的用户会被提示更新。
+- 现行：`BuildInfo` 从原生 `appInfo` 读取安装包的 `versionName` / `versionCode`；`UpdateCheckResult` 用 `hasUpdate` 与 `isCurrent` 分离「有新版」和「就是当前构建」，首页只在 `hasUpdate && downloadUrl` 时弹窗。
+- 发布前用 `tool/check_version.ps1 -Tag v<版本>+<构建号>` 校验 pubspec 与 tag，避免同 tag 换包或构建号漂移。
+
 ## 4. 开发流程（本项目跑通的一套）
 
-1. **抓包实证**：Web 端登录 → DevTools/CDP 抓接口 → 记录参数、响应结构 → 落盘 `api-captures/`。
+1. **抓包实证**：Web 端登录 → DevTools/CDP 抓接口 → 记录参数、响应结构 → 归入 `docs/api-handoff/`（历史样本目录已清理）。
 2. **建模型/API**：在 `lib/api` 封装 Dio 请求，`lib/models` 定义模型；解析先覆盖真实字段再兜底。
 3. **State 层**：`providers/` 用 Riverpod Provider/Notifier 串联；读接口统一走 `data_providers` 的"在线优先 + 离线缓存"。
 4. **UI 层**：`ui/<模块>/页面`，注意统一用 `AppNotification` 做顶部灵动岛提示、`FadeUpwardsPageTransitionsBuilder` 过渡。
-5. **构建验证**：每次改动 `flutter analyze` → `flutter test` → `flutter build apk --release --target-platform android-arm64 --build-number=<递增>` → 装真机验证；同批改动记入 `docs/modification_log.md`。
+5. **构建验证**：`flutter analyze` → `flutter test` → `.\tool\check_version.ps1` → `flutter build apk --release --target-platform android-arm64 --build-number=<递增>` → 装真机验证；同批改动记入 `docs/modification_log.md`。
 6. **后端部署**：先备份远端 `server.js` → 上传 → `docker compose up -d --build` → 容器内 grep 校验 → 探测关键接口。
-7. **发布**：把 `jw_app/RELEASE_NOTES.md` 内容贴到 GitHub Release，附 APK。
+7. **发布**：更新 `docs/release_notes_v1.0.1.md`（或当版说明）→ 建 `v1.0.1+<构建号>` Release → 上传 `haipan-app-release.apk` 并标记 latest。
+8. **官网**：三页源文件在 `site/`，同步到 `QingYu327/haipan-website`，Netlify 自动部署；改版本标签时首页、文档、注意事项一起改。
 
 ## 5. 环境 / 约定备忘
 
 - 构建受外网限制，`pub.dev`/Gradle 用腾讯/阿里云镜像；`path_provider_android` 锁 2.2.17。
 - 签名：正式版 `jw_app/android/upload-keystore.jks`（RSA2048，CN=XIUHONG）；alias/口令见 gitignore 的 `android/key.properties`（勿外泄，自行备份）以保证后续更新签名一致。
-- 更新下载走 GitHub Release APK，镜像加速 + 直连回退；校验名称 `海畔_update_v<版本>.apk`。
+- 更新下载走 GitHub Release APK，镜像加速 + 直连回退；Release 资产名固定 `haipan-app-release.apk`，官网下载直链依赖该名称。
+- 版本判断以安装包 `versionName` / `versionCode` 为准（`lib/util/build_info.dart`），发布前用 `tool/check_version.ps1` 校验 pubspec 与 tag。
 - 日志系统按模块/页面打标签（tag），支持按关键词过滤 + 按保留天数自动清理；级别分 查看级/调试级。
 - 后端部署：NAS `/vol1/1000/docker/haipan-api`（容器 `haipan-api`，宿主 18080 → 容器 8080，数据卷 `./data`）；管理员由 compose 的 `ADMIN` 环境变量指定。
 - 临时凭据放 `.secrets/`（已 gitignore，结项删除），禁止写入文档/提交记录。
@@ -97,3 +106,4 @@
 - 通知权限在严格管控的设备上已降级为普通通知，仍需在真机机型上回归。
 - 设备认证失败文案已分层：服务端 4xx 显示“学号验证失败”，超时/断网才显示“通道连接失败”。
 - 名单内学号换设备默认自动重绑（旧会话失效，单设备生效）；管理员可在 APP「用户统计」页关闭该开关，关闭后换绑需 `resetDevice`，管理端重置始终保留。
+- 情侣课表已完成方案设计（服务器中转 + 6 位配对码、合并课表 + 共同空闲、仅同步课名/时间/地点/周次），尚未进入实现。

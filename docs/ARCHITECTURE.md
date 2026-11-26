@@ -1,6 +1,6 @@
 # 技术架构 · 海畔
 
-> 面向开发与运维的现状说明书。版本基线：build 2068（2026-11-23）。
+> 面向开发与运维的现状说明书。版本基线：`1.0.1+4144`（2026-11-26）。
 > 开工前先读 [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)；踩坑与决策依据见 [LESSONS_LEARNED.md](LESSONS_LEARNED.md)。
 
 ## 1. 系统组成
@@ -9,8 +9,9 @@
 |---|---|---|
 | Android 客户端 | `jw_app/` | 教务功能、离线缓存、桌面小部件、通知提醒 |
 | 云端 API | `backend/server.js`（Node 20） | 设备认证、会话令牌、准入白名单、使用统计、隧道入口下发、WebSocket 隧道 |
-| 部署机 | 飞牛 NAS `192.168.6.137` | Docker `haipan-api`，数据卷 `./data`；对外三路：Cloudflare Tunnel / ME Frp（→ `18080` 明文）、阿里云 TCP 穿透（→ `18443` 仅 TLS） |
+| 部署机 | 飞牛 NAS `192.168.6.137` | Docker `haipan-api`，数据卷 `./data`；对外多路：国内直连 TLS、Cloudflare、东莞/深圳 FRP |
 | 教务系统 | `jw.gdou.edu.cn` / `authserver.gdou.edu.cn` | 统一身份认证、课表/成绩/考试/学业等数据源 |
+| 静态官网 | `site/`、`QingYu327/haipan-website` | 首页 / 使用文档 / 注意事项；Netlify 自动部署，Gitee 镜像同步 |
 
 客户端不在校内时，`jw.gdou.edu.cn` 的请求经「本地 CONNECT 代理 → WebSocket 隧道 → NAS → 校园网」转发；登录页也经同一隧道加载 `authserver.gdou.edu.cn` 的原始页面（部分运营商直连 authserver 会被拒）。
 
@@ -23,7 +24,7 @@ lib/
 ├── providers/    Riverpod 状态：session / settings / data_providers（在线优先 + 离线缓存）
 ├── theme/        水墨视觉体系（ink_tokens / ink_panel 等）
 ├── ui/           home / login / timetable / grade / exam / academic / rank / profile / onboarding / widgets
-└── util/         隧道、代理、设备认证、缓存、日志、提醒、刷新闸门、服务器选路
+└── util/         隧道、代理、设备认证、缓存、日志、提醒、刷新闸门、服务器选路、build_info
 ```
 
 原生侧（`android/.../cn/gdou/xiuhong/`）：
@@ -42,8 +43,9 @@ MethodChannel：`cn.gdou.xiuhong/auth`（设备密钥）、`cn.gdou.xiuhong/prox
 
 ### 3.1 教务会话
 
-- 正方教务为**纯 Cookie 鉴权**，`Dio + PersistCookieJar` 持久化；密码仅存本机（加密），不上传。
-- 登录前必须完成 zfdun 滑块验证；成功拉课表后取学籍。
+- 正方教务为**纯 Cookie 鉴权**，`Dio + PersistCookieJar` 持久化；密码只在提交时经原生 AES 加密，不上传。
+- 登录页优先走原生统一身份认证表单（学号 + 密码 + 验证码 / 多因子）；失败时可切 WebView 认证页兜底。
+- 校外登录页经隧道加载 `authserver.gdou.edu.cn`，登录成功后 CAS 按 `service` 回跳 jw；成功拉课表后取学籍。
 
 ### 3.2 设备认证与云端令牌
 
@@ -62,7 +64,14 @@ App                         云端 /device/register        Keystore
 - 名单内学号换机或清空应用数据后生成新密钥，`/device/register` 直接覆盖旧绑定，并让该学号的旧会话全部失效（同一学号同时只有一台设备可用）；管理页仍可手动重置设备。
 - 客户端本地对 `ownerXh` 有 APP 门控例外，但**不能绕过**设备认证。
 
-### 3.3 准入白名单
+### 3.3 更新检查与版本源
+
+- 更新源是 GitHub `releases/latest`，取 assets 中第一个 `.apk`；镜像前缀 `v6.gh-proxy.org`，失败回退直连。
+- 运行版本不再手写：`lib/util/build_info.dart` 通过 `cn.gdou.xiuhong/app` 读取安装包 `versionName` / `versionCode`。
+- `UpdateCheckResult` 显式返回 `hasUpdate` / `isCurrent`：首页只在 `hasUpdate && downloadUrl` 时弹窗，更新页用 `isCurrent` 展示发布说明。
+- 发布前用 `tool/check_version.ps1 -Tag v<版本>+<构建号>` 校验 pubspec 与 tag；Release 资产名固定 `haipan-app-release.apk`。
+
+### 3.4 准入白名单
 
 - 名单只存在云端 `cfg.allow_app`（`$DATA_DIR/haipan.json`），从不下发。
 - 客户端本地仅缓存判定结果 `usage.app_allowed.<学号>`（按学号隔离），清空数据即失效。
@@ -74,7 +83,7 @@ App                         云端 /device/register        Keystore
 
 - 入口列表可由云端 `/tunnel/endpoints` 下发并本地缓存，换域名无需发版。
 - `ServerConfig.autoSelect()` 启动时并行测速，仅在「当前不可达 / 快 200ms 以上 / 快过 1.5 倍」时切换，10 分钟内不重复测速，避免抖动。
-- 主通道走 Cloudflare Tunnel，备用通道走 ME Frp；两者最终指向 NAS 的 `18080` 明文 HTTP。
+- 当前下发入口：国内直连（阿里云 TCP 穿透 `8.148.27.215:48644` → NAS `18443` TLS）、Cloudflare `haipan-api.cjhong.top`、东莞 `frp-ski.com:38169`、深圳 `120.79.176.77:59192`；客户端按延迟自动选路，换域名只需管理员下发。
 - **国内直连**（Batch35）：阿里云 TCP 穿透 `8.148.27.215:48644` → NAS `18443` → 容器 `8443`，只跑自签 TLS。没有域名可用（未备案会被阿里云拦截），因此客户端用证书指纹固定（`lib/util/tls_pin.dart`）代替 CA 校验；该端口不响应任何明文 HTTP，另有限频、并发上限、失败拉黑和固定子协议 `haipan-v1` 四项防护。证书持久化在 `data/tls/`，轮换时必须同步更新指纹并发版。
 
 ### 4.2 隧道与本地代理
@@ -152,7 +161,7 @@ App                         云端 /device/register        Keystore
 - 实际 compose 目录：`/vol1/1000/docker/haipan-api`（以 `docker inspect` 的 `com.docker.compose.project.working_dir` 为准）。
 - 代码是**构建进镜像**的（`build: .`）：改 `server.js` 后必须 `docker compose up -d --build`，`docker restart` 不生效。
 - 校验：`docker exec haipan-api grep -c "<改动标记>" /app/server.js`。
-- 端口：容器 8080 → 宿主 18080；对外由 Cloudflare Tunnel（主）与 ME Frp（备）转发。
+- 端口：容器 8080 → 宿主 18080；对外由国内直连 TLS、Cloudflare、东莞/深圳 FRP 多路转发，入口由 `/tunnel/endpoints` 下发。
 - 运维脚本在 NAS `ops/`：每日备份 `haipan.json`（保留 14 天）、5 分钟健康检查（状态变化才写日志）。
 - 部署前先备份远端 `server.js`（如 `server.js.bak-<说明>`）。
 
@@ -160,11 +169,14 @@ App                         云端 /device/register        Keystore
 
 1. `cd jw_app && flutter analyze`（应无 issue）。
 2. `flutter test`。
-3. `flutter build apk --release --target-platform android-arm64 --build-number=<递增>`。
-   - `android/gradle.properties` 已设 `force-version-code-ignoring-abi=true`：Flutter 默认会给单 ABI 包加偏移（arm64 +2000，2083 → 4083），这里强制 `versionCode` 等于构建号；升级安装时构建号需要大于手机上已有的 versionCode（历史 2xxx 包实际装成 4xxx，故 4084 起继续递增）。
-4. 安装真机验收：`adb install -r`；模拟器需 `--target-platform android-x64`。
-5. 复制到桌面 `海畔_<版本>.apk`，交付链接用 `computer://`。
-6. 后端有改动时同步部署 NAS 并验证 `/health` 与关键接口。
+3. `.\tool\check_version.ps1`（发布前加 `-Tag v<版本>+<构建号>` 校验 tag）。
+4. `flutter build apk --release --target-platform android-arm64 --build-number=<递增>`。
+   - `android/gradle.properties` 已设 `force-version-code-ignoring-abi=true`：Flutter 默认会给单 ABI 包加偏移（arm64 +2000，2083 → 4083），这里强制 `versionCode` 等于构建号；升级安装时构建号需要大于手机上已有的 versionCode。
+5. 安装真机验收：`adb install -r`；模拟器需 `--target-platform android-x64`。
+6. 复制到桌面 `海畔_<版本>.apk`，交付链接用 `computer://`。
+7. 后端有改动时同步部署 NAS 并验证 `/health` 与关键接口。
+
+发布：Release 标签形如 `v1.0.1+<构建号>`，APK 资产名固定 `haipan-app-release.apk`，并标记 latest；官网下载直链与客户端更新都依赖该命名。
 
 签名：`jw_app/android/upload-keystore.jks`，口令在 `jw_app/android/key.properties`（已 gitignore），务必备份以保证升级签名一致。
 
@@ -173,6 +185,9 @@ App                         云端 /device/register        Keystore
 | 路径 | 内容 |
 |---|---|
 | `jw_app/lib/api` | 网络与接口封装 |
+| `jw_app/lib/util/build_info.dart` | 安装包 versionName / versionCode 读取 |
+| `jw_app/tool/check_version.ps1` | 发布前 pubspec / tag 一致性检查 |
+| `site/` | 官网三页与共享样式脚本 |
 | `jw_app/lib/util/campus_tunnel.dart` | 隧道 + 本地 CONNECT 代理 |
 | `jw_app/lib/util/server_config.dart` | 入口列表、测速、自动选路 |
 | `jw_app/lib/util/home_widget.dart` | Flutter 侧小部件数据刷新 |

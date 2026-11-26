@@ -11,6 +11,32 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-26 · Batch85：更新通道版本源改为安装包 + 官网三页与文档刷新
+
+### 范围
+- 客户端：新增 `lib/util/build_info.dart`；重写 `lib/api/update_api.dart` 的结果模型；调整 `main.dart`、`home_shell.dart`、`update_page.dart`；新增 `tool/check_version.ps1`。
+- 官网：`site/index.html` 补移动端菜单（含使用文档 / 注意事项入口）；新增 `docs.html`、`notes.html` 与 `assets/pages.css`、`pages.js`、`app-icon.png`。
+- 文档：根 `README.md`、`jw_app/README.md`、`jw_app/INDEX.md`、`docs/PROJECT.md`、`PROJECT_SUMMARY.md`、`ARCHITECTURE.md`、`INDEX.md`、`LESSONS_LEARNED.md` 同步现状。
+
+### 决策
+- 运行版本不再手写：`BuildInfo` 通过原生 `cn.gdou.xiuhong/app` 读取安装包 `versionName` / `versionCode`，从根上消除源码常量与 `--build-number` / Release tag 的漂移。
+- 更新检查返回 `UpdateCheckResult`：`hasUpdate` 与 `isCurrent` 分离；首页只在 `hasUpdate && downloadUrl.isNotEmpty` 时弹窗，更新页用 `isCurrent` 展示发布说明。
+- 发布前用 `tool/check_version.ps1 -Tag v<版本>+<构建号>` 校验 pubspec 与 tag；Release 资产名固定 `haipan-app-release.apk`。
+- 官网 ≤860px 把桌面导航收进菜单按钮，菜单内保留功能、网络、使用文档、注意事项、下载五个入口；新增页品牌位改用 APP 图标，不再用文字占位。
+
+### 验证
+- `flutter analyze` 无 issue；`check_version.ps1` 对 `1.0.1+4144` 通过。
+- 官网在 390 / 768 / 1024 / 1440 四档宽度实测：`scrollWidth == clientWidth`、无横向溢出、无破图、无重复 ID、单页单 H1；移动菜单展开后 5 个入口可见；三页控制台无报错。
+- 本批未构建 APK（按「攒批」处理），版本仍为 `1.0.1+4144`。
+
+### 部署
+- GitHub `QingYu327/haipan-website`：`8ced5ea`（三页与动效）、`4e0ad4d`（APP 图标）。
+- Gitee `haipan-website`：`f095445`、`e1e62f7`。
+- `QingYu327/HaiPan`：`fe49929`、`9c9bdcb`（`site/` 同步）。
+
+### 遗留
+- Netlify 生产地址未记录在仓库中，构建完成后需用实际域名复核线上版本。
+
 ## 2026-11-26 · Batch84：修复「已是最新仍提示更新」（build 4144）
 
 ### 问题

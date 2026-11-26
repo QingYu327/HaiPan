@@ -15,5 +15,5 @@
 ## 说明
 
 - 校准样本是「现场证据」，字段语义以 `api_docs.json` 与实际响应核对为准；抓包值里的空格、大小写等隐形字符使用前要清洗。
-- `README_HANDOFF.md` 提到的 `tools/bridge_daemon.js` 属当时的独立移交包，**未随本项目归档**；本仓库的替代方案见 [tools/grab-course/](../../tools/grab-course/INDEX.md)。
-- 同一份 `zzxkYzb.js` 在 [api-captures/](../../api-captures/INDEX.md) 另有抓取样本，两者内容不同（不同时点抓取），均保留。
+- `README_HANDOFF.md` 提到的 `tools/bridge_daemon.js` 属当时的独立移交包，**未随本项目归档**；相关脚本目录已在 2026-11 清理。
+- 早期 `api-captures/` 抓包样本已在 2026-11 清理；接口契约以 `api_docs.json` 为准，校准样本见 `calibration/`。

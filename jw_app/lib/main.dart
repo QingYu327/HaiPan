@@ -18,6 +18,7 @@ import 'ui/widgets/ink_dialog.dart';
 import 'ui/widgets/ink_panel.dart';
 import 'ui/widgets/permission_prompt.dart';
 import 'util/app_log.dart';
+import 'util/build_info.dart';
 import 'util/campus_tunnel.dart';
 import 'util/lesson_notifier.dart';
 import 'util/server_config.dart';
@@ -59,6 +60,7 @@ Future<void> _warmup(ProviderContainer container) async {
   };
   await Future.wait([
     AppLog.init(),
+    BuildInfo.ensureLoaded(),
     LessonNotifier.init(),
     container.read(settingsProvider.notifier).load(),
     ServerConfig.load(),
