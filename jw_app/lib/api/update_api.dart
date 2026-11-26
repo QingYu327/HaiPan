@@ -4,6 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 当前应用版本（与 pubspec.yaml version 保持一致）
 const appVersion = '1.0.1';
 
+/// 当前构建号（与 pubspec.yaml 的 +N 一致），Release tag 形如 v1.0.1+4143
+const appBuild = 4143;
+
+/// 展示用完整版本号
+const appVersionLabel = '$appVersion+$appBuild';
+
 /// GitHub 发布仓库（owner/repo）：公开仓库只放文档与主要源码，APK 走 Release
 const githubRepo = 'QingYu327/HaiPan';
 
@@ -33,24 +39,27 @@ class UpdateApi {
       rethrow;
     }
     final tagName = '${data['tag_name'] ?? ''}'.trim();
-    var version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
+    final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
     if (version.isEmpty) return ('', '', '', '');
-    // 版本比对：仅按数字段比较，tag 可能带后缀（如 1.0.1-beta）
-    bool newer(String a, String b) {
-      final pa = RegExp(r'\d+').allMatches(a).map((m) => int.parse(m.group(0)!)).toList();
-      final pb = RegExp(r'\d+').allMatches(b).map((m) => int.parse(m.group(0)!)).toList();
-      for (var i = 0; i < pa.length || i < pb.length; i++) {
-        final x = i < pa.length ? pa[i] : 0;
-        final y = i < pb.length ? pb[i] : 0;
-        if (x != y) return x > y;
+    // 版本比对：主版本按数字段比较；主版本相同再比构建号（tag 里的 +N）
+    final pa = _numbers(version);
+    final pb = _numbers(appVersion);
+    var newer = false;
+    for (var i = 0; i < pa.length || i < pb.length; i++) {
+      final x = i < pa.length ? pa[i] : 0;
+      final y = i < pb.length ? pb[i] : 0;
+      if (x != y) {
+        newer = x > y;
+        break;
       }
-      return false;
+    }
+    if (!newer && _sameCore(version, appVersion)) {
+      newer = _buildOf(version) > appBuild;
     }
 
-    if (!newer(version, appVersion)) {
-      // 非更新版本：若与当前版本完全一致，返回其更新日志，
-      // 供页面展示"当前版本更新日志 + 置灰按钮"；更旧版本视为无更新。
-      if (version == appVersion) {
+    if (!newer) {
+      // 非更新版本：与当前构建一致时返回更新日志，供页面展示并置灰按钮
+      if (_sameCore(version, appVersion) && _buildOf(version) == appBuild) {
         var notes = '${data['body'] ?? ''}'.trim();
         if (notes.length > 800) notes = '${notes.substring(0, 800)}…';
         return (version, notes, '', ''); // downloadUrl 空 → 按钮置灰
@@ -78,3 +87,29 @@ class UpdateApi {
 }
 
 final updateApiProvider = Provider<UpdateApi>((ref) => UpdateApi());
+
+/// 该 Release 版本是否就是当前安装的构建
+bool isCurrentRelease(String v) =>
+    _sameCore(v, appVersion) && _buildOf(v) == appBuild;
+
+/// 取版本号里的数字段（1.0.1+4143 → [1,0,1,4143]）
+List<int> _numbers(String v) =>
+    RegExp(r'\d+').allMatches(v).map((m) => int.parse(m.group(0)!)).toList();
+
+/// 主版本是否相同（忽略构建号）
+bool _sameCore(String a, String b) {
+  final pa = _numbers(a.split('+').first);
+  final pb = _numbers(b.split('+').first);
+  for (var i = 0; i < pa.length || i < pb.length; i++) {
+    final x = i < pa.length ? pa[i] : 0;
+    final y = i < pb.length ? pb[i] : 0;
+    if (x != y) return false;
+  }
+  return true;
+}
+
+/// tag 里的构建号（v1.0.1+4143 → 4143），没有则 0
+int _buildOf(String v) {
+  final m = RegExp(r'\+(\d+)').firstMatch(v);
+  return m == null ? 0 : int.parse(m.group(1)!);
+}

@@ -144,16 +144,16 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               const SizedBox(height: InkSpacing.m),
               Text('当前已是最新版本', style: context.tsBodyStrong),
               const SizedBox(height: InkSpacing.xs),
-              Text('v$appVersion', style: context.tsSecondary),
+              Text('v$appVersionLabel', style: context.tsSecondary),
             ],
           ),
         );
-      } else if (r.$1 == appVersion) {
+      } else if (isCurrentRelease(r.$1)) {
         content = _VersionNotes(
           icon: AppIcons.success,
           iconTone: InkTone.success,
           title: '当前已是最新版本',
-          versionText: 'v$appVersion',
+          versionText: 'v$appVersionLabel',
           notes: r.$2,
           action: SizedBox(
             width: double.infinity,
