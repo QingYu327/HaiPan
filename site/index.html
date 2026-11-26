@@ -329,7 +329,16 @@
   .dl-meta span{font-size:12px;color:var(--ink-3);border:1px solid var(--line);
     border-radius:999px;padding:4px 12px;background:var(--card)}
 
-  footer{margin-top:92px;border-top:1px solid var(--line);padding:32px 0 28px}
+  /* 免责声明 */
+  .policy{margin-top:24px;border-radius:22px;padding:26px 28px;
+    background:var(--card);border:1px solid var(--line)}
+  .policy h3{display:flex;align-items:center;gap:9px;margin:0 0 10px;
+    font-family:var(--sans);font-size:14.5px;font-weight:600}
+  .policy h3 svg{width:16px;height:16px;color:var(--blue)}
+  .policy p{margin:0 0 6px;font-size:12.5px;line-height:1.85;color:var(--ink-3)}
+  .policy p:last-child{margin-bottom:0}
+
+  footer{margin-top:44px;border-top:1px solid var(--line);padding:32px 0 28px}
   .foot{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;
     font-size:12.5px;color:var(--ink-3)}
   .foot a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--line)}
@@ -602,6 +611,16 @@
         </div>
         <div class="dl-meta"><span>1.0.1</span><span>Android</span><span>arm64</span><span>约 23 MB</span></div>
       </div>
+
+      <div class="policy reveal">
+        <h3>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+          免责声明
+        </h3>
+        <p>海畔为个人开发的非官方工具，与任何院校及其教务系统无隶属或授权关系。</p>
+        <p>应用内数据均来自教务系统，仅缓存在本机，不上传至任何服务器；成绩、考试与课表信息仅供参考，请以官方发布为准。</p>
+        <p>使用本应用产生的一切后果由使用者自行承担。</p>
+      </div>
     </div>
   </section>
 </main>
@@ -611,7 +630,7 @@
     <span>海畔 1.0.1</span>
     <span><a id="foot-repo" href="#" target="_blank" rel="noopener">GitHub</a> · <a id="foot-release" href="#" target="_blank" rel="noopener">Releases</a></span>
   </div>
-  <p class="powered">Powered By XIUHONG Ⅰ 科技创新协会</p>
+  <p class="powered">Powered By XIUHONG &amp; KJCXXH</p>
 </footer>
 
 <script>
