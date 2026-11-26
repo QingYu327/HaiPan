@@ -23,6 +23,7 @@
 - 更新检查返回 `UpdateCheckResult`：`hasUpdate` 与 `isCurrent` 分离；首页只在 `hasUpdate && downloadUrl.isNotEmpty` 时弹窗，更新页用 `isCurrent` 展示发布说明。
 - 发布前用 `tool/check_version.ps1 -Tag v<版本>+<构建号>` 校验 pubspec 与 tag；Release 资产名固定 `haipan-app-release.apk`。
 - 官网 ≤860px 把桌面导航收进菜单按钮，菜单内保留功能、网络、使用文档、注意事项、下载五个入口；新增页品牌位改用 APP 图标，不再用文字占位。
+- 官网顶栏对齐 DeepSeek：桌面导航高度 64px、链接 14.5px、品牌 18px，文档/注意事项与工具组整体靠右；移动端导航 56px，入口收进菜单。
 
 ### 验证
 - `flutter analyze` 无 issue；`check_version.ps1` 对 `1.0.1+4144` 通过。
