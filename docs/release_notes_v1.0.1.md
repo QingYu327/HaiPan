@@ -25,4 +25,4 @@
 - 适用于 Android 8.0 及以上，arm64 设备，约 23 MB
 - 覆盖安装即可保留课表缓存与登录状态
 
-SHA-256：`be7b661a0b804e561766106ed4698ea1ba99b123264f98a332972a9af07755cc`
+SHA-256：`58d6cf56ae7775574cdc79eef245f9de6a84c4ba3ccf65b55371d40dec35a6f0`

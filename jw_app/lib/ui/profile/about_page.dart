@@ -76,8 +76,8 @@ class _AboutPageState extends ConsumerState<AboutPage> {
               Text('海畔', style: context.tsSection),
               const SizedBox(height: InkSpacing.s),
               Text(
-                '面向本校学生的第三方教务客户端。课表、成绩、考试与空教室集中在一处，'
-                '水墨留白的界面，断网也能查看已缓存的课表。',
+                '面向学生的第三方教务工具。集中查看课表、成绩、考试与空教室，'
+                '界面简洁，支持离线缓存与课程提醒。',
                 textAlign: TextAlign.center,
                 style: context.tsSecondary.copyWith(height: 1.6),
               ),
@@ -181,7 +181,6 @@ class _AboutPageState extends ConsumerState<AboutPage> {
               ),
               InkSettingTile(
                 title: '校外通道',
-                subtitle: 'WebSocket 隧道，服务端自建',
                 trailing: Text('WebSocket · Node.js', style: context.tsBodyStrong),
                 showDivider: false,
               ),
