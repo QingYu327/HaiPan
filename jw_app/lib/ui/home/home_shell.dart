@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../api/update_api.dart';
+import '../../api/usage_api.dart';
 import '../../providers/data_providers.dart';
 import '../../providers/session_provider.dart';
+import '../../theme/ink_page_transition.dart';
 import '../../util/app_log.dart';
 import '../../util/notify_target.dart';
 import '../../theme/ink_tokens.dart';
@@ -13,8 +16,10 @@ import '../academic/academic_page.dart';
 import '../exam/exam_page.dart';
 import '../grade/grade_page.dart';
 import '../profile/profile_page.dart';
+import '../profile/update_page.dart';
 import '../timetable/timetable_page.dart';
 import '../widgets/app_icons.dart';
+import '../widgets/ink_dialog.dart';
 import '../widgets/ink_page.dart';
 import '../widgets/ink_shell.dart';
 import 'access_denied_page.dart';
@@ -46,12 +51,16 @@ class _HomeShellState extends ConsumerState<HomeShell>
   Timer? _importTimer;
   bool _importBusy = false;
   bool _importOpen = false;
+  bool _updateChecked = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPage());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncPage();
+      _checkUpdateOnLaunch();
+    });
   }
 
   @override
@@ -119,6 +128,43 @@ class _HomeShellState extends ConsumerState<HomeShell>
           ? _buildShell()
           : const AccessDeniedPage(),
     );
+  }
+
+  /// 启动后静默检查更新：等首屏导入结束再问，避免和进度弹窗抢同一层。
+  Future<void> _checkUpdateOnLaunch() async {
+    if (_updateChecked) return;
+    _updateChecked = true;
+    await Future<void>.delayed(const Duration(seconds: 2));
+    // 首屏导入（含登录态拉课表）期间先让路，最多等 10 秒
+    for (var i = 0; i < 20 && _importBusy; i++) {
+      if (!mounted) return;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    if (!mounted) return;
+    try {
+      final gates = await ref.read(featureGatesProvider.future);
+      if (gates[UsageTracker.gateUpdateBlock] == true) return;
+    } catch (_) {
+      // 门控查询失败不影响检查
+    }
+    try {
+      final r = await ref.read(updateApiProvider).checkLatest();
+      if (!mounted || r.$1.isEmpty || r.$4.isEmpty) return;
+      AppLog.d('更新', '启动检测到新版本 v${r.$1}');
+      final go = await showInkDialog(
+        context,
+        title: '发现新版本 v${r.$1}',
+        message: '修复问题并改进使用体验，是否前往更新？',
+        cancelText: '稍后',
+        confirmText: '去更新',
+      );
+      if (!go || !mounted) return;
+      await Navigator.of(context, rootNavigator: true).push(
+        InkPageRoute(builder: (_) => const UpdatePage()),
+      );
+    } catch (e) {
+      AppLog.d('更新', '启动检查更新跳过：$e');
+    }
   }
 
   /// 导入进度弹窗：延迟 400ms 再弹出，避免缓存命中时一闪而过。

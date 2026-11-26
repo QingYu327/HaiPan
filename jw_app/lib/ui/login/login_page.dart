@@ -574,7 +574,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           const SizedBox(width: InkSpacing.s),
           Expanded(
             child: Text(
-              '建议使用校园网登录。公网通道需联系管理员开通，且速度较慢。',
+              '建议使用校园网登录。公网通道需联系管理员开通，且速度较慢',
               style: context.tsSecondary,
             ),
           ),

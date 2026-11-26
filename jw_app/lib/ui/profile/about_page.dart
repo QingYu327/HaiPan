@@ -74,10 +74,13 @@ class _AboutPageState extends ConsumerState<AboutPage> {
               ),
               const SizedBox(height: InkSpacing.l),
               Text('海畔', style: context.tsSection),
-              const SizedBox(height: InkSpacing.xs),
-              Text('应用版本 v$appVersion', style: context.tsSecondary),
-              const SizedBox(height: 2),
-              Text('构建版本 $_buildLabel', style: context.tsSecondary),
+              const SizedBox(height: InkSpacing.s),
+              Text(
+                '面向本校学生的第三方教务客户端。课表、成绩、考试与空教室集中在一处，'
+                '水墨留白的界面，断网也能查看已缓存的课表。',
+                textAlign: TextAlign.center,
+                style: context.tsSecondary.copyWith(height: 1.6),
+              ),
               const SizedBox(height: InkSpacing.m),
               // 卡片内的彩色小标签
               const Wrap(
@@ -168,6 +171,18 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                   'Kotlin 原生通道 · WebView',
                   style: context.tsBodyStrong,
                 ),
+              ),
+              InkSettingTile(
+                title: '桌面小组件',
+                trailing: Text(
+                  'AppWidget · AlarmManager',
+                  style: context.tsBodyStrong,
+                ),
+              ),
+              InkSettingTile(
+                title: '校外通道',
+                subtitle: 'WebSocket 隧道，服务端自建',
+                trailing: Text('WebSocket · Node.js', style: context.tsBodyStrong),
                 showDivider: false,
               ),
             ],
@@ -194,7 +209,7 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                 trailing: Text('MIT', style: context.tsSecondary),
               ),
               InkSettingTile(
-                title: 'Dio · cookie_jar',
+                title: 'Dio · cookie_jar · dio_cookie_manager',
                 subtitle: '网络请求与 Cookie 会话',
                 trailing: Text('MIT', style: context.tsSecondary),
               ),
@@ -209,8 +224,8 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                 trailing: Text('BSD-3-Clause', style: context.tsSecondary),
               ),
               InkSettingTile(
-                title: 'uuid · Cupertino Icons',
-                subtitle: '随机数与图标资源',
+                title: 'uuid',
+                subtitle: '登录验证码随机数',
                 trailing: Text('MIT', style: context.tsSecondary),
               ),
               InkSettingTile(

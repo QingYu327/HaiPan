@@ -11,6 +11,29 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-26 · Batch78：启动自动检查更新 + 关于页信息重写（build 4138）
+
+### 启动检查更新（`home_shell.dart`）
+- `HomeShell.initState` 首帧后延迟 2s 调 `UpdateApi.checkLatest()`；首屏导入弹窗未结束
+  时最多再等 10s，避免与导入进度抢同一层弹窗。
+- 命中更新黑名单（`gateUpdateBlock`）时直接跳过；有新版且能拿到 APK 直链时用
+  `showInkDialog` 弹「发现新版本 vX」，确认后 `InkPageRoute` 进入 `UpdatePage`。
+- 用 `_updateChecked` 保证一个进程内只询问一次。
+
+### 登录提示（`login_page.dart`）
+- 横幅文案去掉句末句号：`建议使用校园网登录。公网通道需联系管理员开通，且速度较慢`
+
+### 关于页（`about_page.dart`）
+- 首卡去掉「应用版本 / 构建版本」两行（应用信息栏已有），换成一段 App 简介。
+- 技术栈补充「桌面小组件（AppWidget · AlarmManager）」与「校外通道（WebSocket · Node.js）」。
+- 开源许可按实际依赖校准：`dio_cookie_manager` 合入网络行，删掉实际未依赖的
+  Cupertino Icons，uuid 说明改为「登录验证码随机数」。
+
+### 发布
+- `1.0.1+4138` 已构建、装机；两个仓库 v1.0.1 资产替换为新包，
+  Release 说明按要求重写为「相对 1.0.0 的变化」，不再逐构建对比。
+- 官网下载信息同步：架构改为 arm64（实际只出 arm64 包）。
+
 ## 2026-11-26 · Batch77：准入口径文案对齐 + 登录页校园网建议横幅（build 4137）
 
 ### 准入口径（确认，不改逻辑）
