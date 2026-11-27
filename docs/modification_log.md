@@ -28,6 +28,11 @@
 - APK：`cn.gdou.xiuhong` / versionName `1.0.1` / versionCode `4145`，24,065,921 字节，SHA-256 `6614e6c48b7e0c383323908497c8ccebfeaefb4093eda693a306a4d94d4892e9`。
 - Release 标记 latest。
 
+### 部署
+- `QingYu327/HaiPan`：`0d1ec6f`（main）。
+- Release `v1.0.1+4145`（latest），资产 `haipan-app-release.apk`。
+- 官网 `QingYu327/haipan-website`：`4dc75a9`（main，Netlify 自动部署）；Gitee `heaven-does-not-move/haipan-website`：`814e613`（master）。
+
 ## 2026-11-27 · Batch86：补齐灵动岛反馈、日志设置入口与官网导航/版本清理
 
 ### 范围
