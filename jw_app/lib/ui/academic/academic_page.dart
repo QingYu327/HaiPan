@@ -50,6 +50,7 @@ class AcademicPage extends ConsumerWidget {
           }
           return InkRefresh(
             onRefresh: refresh,
+            successMessage: '学业数据已刷新',
             child: ListView(
               primary: false,
               physics: const AlwaysScrollableScrollPhysics(),

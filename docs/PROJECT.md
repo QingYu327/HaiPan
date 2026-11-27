@@ -1,6 +1,6 @@
 # 海畔（jw_app）项目文档
 
-> 面向接手者与后续 AI 开发的现状说明书。所有结论均来自当前代码（`jw_app/lib`，版本 `1.0.1+4144`）。
+> 面向接手者与后续 AI 开发的现状说明书。所有结论均来自当前代码（`jw_app/lib`，版本 `1.0.1+4145`）。
 > 文中统一用「学校」代指学校名称；域名、路径等均取自代码常量，沿用原样以便检索。
 > 修改历史与逐批决策见 [`docs/modification_log.md`](modification_log.md)（最新在前，已写到 Batch85）。
 
@@ -18,7 +18,7 @@
 | 性质 | 非官方校园教务助手，个人开发 |
 | 数据来源 | 学校正方教务系统 + 学校统一身份认证（authserver） |
 | 联网方式 | 校内直连；校外经自建 WebSocket 隧道回到校园网 |
-| 文档基线 | `pubspec.yaml` version `1.0.1+4144` |
+| 文档基线 | `pubspec.yaml` version `1.0.1+4145` |
 
 ### 1.2 功能清单（以代码实际能力为准）
 
@@ -37,7 +37,7 @@
 | 检查更新 | `lib/ui/profile/update_page.dart` | GitHub Release 检查、下载、安装 |
 | 意见反馈 | `lib/ui/profile/feedback_page.dart` | 反馈模板 + 日志导出 |
 | 设置 | `lib/ui/profile/settings_page.dart` | 主题、字号、背景、提醒、课表周起始、存储、错误修复、权限 |
-| 运行日志 / 调试 | `log_page.dart`、`debug_page.dart` | 分级日志、学号脱敏、日志导出；开发者可见统计与通道调试 |
+| 运行日志 / 调试 | `log_page.dart`、`debug_page.dart` | 分级日志、学号脱敏、日志导出；详细级别开关与保留天数（两页共用）、开发者可见统计与通道调试 |
 | 游客浏览 | `LoginPage` → `enterGuest()` | 未登录进入主页，仅看离线缓存 |
 | APP 准入 | `appAccessProvider` | 云端白名单门控，默认禁止，管理员开通后可用 |
 
@@ -356,7 +356,7 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 
 | 位置 | 当前值 | 规则 |
 |---|---|---|
-| `pubspec.yaml` `version` | `1.0.1+4144` | 正式线固定 `1.0.1`，只递增 `+` 后的构建号 |
+| `pubspec.yaml` `version` | `1.0.1+4145` | 正式线固定 `1.0.1`，只递增 `+` 后的构建号 |
 | `lib/util/build_info.dart` | 运行时读取 | 不再维护 Dart 常量，安装包 versionName / versionCode 是唯一来源 |
 | `android/gradle.properties` | `force-version-code-ignoring-abi=true` | 强制 `versionCode` = 构建号，不加 ABI 偏移（arm64 的 +2000） |
 
@@ -367,7 +367,7 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 - 源文件：`site/index.html`（首页）、`site/docs.html`（使用文档）、`site/notes.html`（注意事项）、`site/assets/`（共享样式、脚本、APP 图标）。
 - 部署仓库：GitHub `QingYu327/haipan-website`（`main`，Netlify 自动部署）；Gitee `heaven-does-not-move/haipan-website`（`master` 镜像）。
 - 首页顶部导航在桌面显示「功能 / 网络 / 使用文档 / 注意事项」；≤860px 收起为菜单按钮，展开后仍包含文档与注意事项入口。
-- 官网下载直链依赖 Release 资产名 `haipan-app-release.apk`；版本标签需与 App 当前 `1.0.1+4144` 保持同步。
+- 官网下载直链依赖 Release 资产名 `haipan-app-release.apk`；版本标签需与 App 当前 `1.0.1+4145` 保持同步。
 
 ---
 

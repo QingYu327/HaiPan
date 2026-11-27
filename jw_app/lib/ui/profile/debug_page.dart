@@ -5,7 +5,6 @@ import '../../api/usage_api.dart';
 import '../../providers/session_provider.dart';
 import '../../theme/ink_page_transition.dart';
 import '../../theme/ink_tokens.dart';
-import '../../util/app_log.dart';
 import '../../util/lesson_notifier.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/ink_notice.dart';
@@ -54,8 +53,8 @@ class DebugPage extends ConsumerWidget {
                 onTap: () => Navigator.push(context,
                     InkPageRoute(builder: (_) => const LogPage())),
               ),
-              const _RetentionRow(),
-              const _DetailRow(),
+              const LogRetentionRow(),
+              const LogDetailRow(),
               InkSettingTile(
                 title: '发送测试通知',
                 icon: AppIcons.notifications,
@@ -261,69 +260,3 @@ class _ReminderDiagState extends State<_ReminderDiag> {
   }
 }
 
-/// 输出详细日志开关：关闭=查看级（仅 W/E），打开=调试级（含 D 级细节）
-class _DetailRow extends StatefulWidget {
-  const _DetailRow();
-  @override
-  State<_DetailRow> createState() => _DetailRowState();
-}
-
-class _DetailRowState extends State<_DetailRow> {
-  @override
-  Widget build(BuildContext context) {
-    return InkSettingTile(
-      title: '输出详细日志',
-      icon: AppIcons.tune,
-      iconTone: InkTone.info,
-      trailing: Switch(
-        value: AppLog.debugDetail,
-        onChanged: (on) {
-          AppLog.setDetail(on).then((_) {
-            if (mounted) setState(() {});
-          });
-        },
-      ),
-    );
-  }
-}
-
-/// 日志保留天数选择（超过的天数自动清理）
-class _RetentionRow extends StatefulWidget {
-  const _RetentionRow();
-  @override
-  State<_RetentionRow> createState() => _RetentionRowState();
-}
-
-class _RetentionRowState extends State<_RetentionRow> {
-  @override
-  Widget build(BuildContext context) {
-    return InkSettingTile(
-      title: '日志保留',
-      icon: AppIcons.time,
-      iconTone: InkTone.info,
-      trailing: SegmentedButton<int>(
-        showSelectedIcon: false,
-        style: const ButtonStyle(
-          visualDensity: VisualDensity.compact,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          minimumSize: WidgetStatePropertyAll(Size(0, 32)),
-          padding: WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 8),
-          ),
-          textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
-        ),
-        segments: const [
-          ButtonSegment(value: 3, label: Text('3 天')),
-          ButtonSegment(value: 7, label: Text('7 天')),
-          ButtonSegment(value: 30, label: Text('30 天')),
-        ],
-        selected: {AppLog.retentionDays},
-        onSelectionChanged: (sel) {
-          AppLog.setRetention(sel.first).then((_) {
-            if (mounted) setState(() {});
-          });
-        },
-      ),
-    );
-  }
-}

@@ -105,6 +105,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
     );
     if (!ok) return;
     await act();
+    AppLog.d('存储', '$title：$doneMsg');
     if (mounted) {
       showInkToast(context, doneMsg);
       _compute();

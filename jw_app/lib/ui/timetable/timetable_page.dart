@@ -379,6 +379,7 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
         Expanded(
           child: InkRefresh(
             onRefresh: () => ref.read(timetableProvider.notifier).refresh(),
+            successMessage: '课表已刷新',
             child: SingleChildScrollView(
               primary: false,
               physics: const AlwaysScrollableScrollPhysics(),

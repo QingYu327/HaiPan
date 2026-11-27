@@ -386,6 +386,8 @@ class TermPickerButton extends ConsumerWidget {
         ref.read(termProvider(scope).notifier).state = t;
         ref.read(manualTermSelectionProvider(scope).notifier).state = true;
         _autoFallbackSteps[scope] = 0;
+        AppLog.d('学期', '$scope 切换为 ${t.shortLabel}');
+        showInkToast(context, '已切换到 ${t.shortLabel}');
       },
     );
   }
@@ -692,17 +694,21 @@ class InkRefresh extends StatelessWidget {
     required this.onRefresh,
     required this.child,
     this.fill = false,
+    this.successMessage = '已刷新',
   });
 
   final Future<void> Function() onRefresh;
   final Widget child;
   final bool fill;
 
+  /// 刷新成功后的灵动岛文案，各页面可换成更具体的反馈词。
+  final String successMessage;
+
   /// 统一刷新反馈：完成后顶部灵动岛提示，失败给出错误提示。
   Future<void> _run(BuildContext context) async {
     try {
       await onRefresh();
-      if (context.mounted) showInkToast(context, '已刷新');
+      if (context.mounted) showInkToast(context, successMessage);
     } catch (_) {
       if (context.mounted) {
         showInkToast(context, '刷新失败，请稍后重试', error: true);

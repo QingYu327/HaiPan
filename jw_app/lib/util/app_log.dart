@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppLog {
   AppLog._();
 
-  static const int _max = 800;
+  static const int _max = 2000;
   static const String _retKey = 'log_retention_days';
   static const String _detKey = 'log_detail';
 
@@ -100,6 +100,8 @@ class AppLog {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_detKey, on);
     } catch (_) {}
+    // 开关变化本身也留痕（关闭时仍写入，便于事后确认当前级别）
+    _add('D', '日志', '输出详细日志 → ${on ? '开启（调试级）' : '关闭（仅警告/错误）'}');
   }
 
   static void _add(String lvl, String tag, String msg) {
@@ -139,8 +141,15 @@ class AppLog {
       final p = await SharedPreferences.getInstance();
       await p.setInt(_retKey, retentionDays);
     } catch (_) {}
+    final before = _entries.length;
     _prune();
-    await _persist();
+    _persist();
+    final removed = before - _entries.length;
+    _add(
+      'D',
+      '日志',
+      '保留天数 → $retentionDays 天${removed > 0 ? '（清理 $removed 条过期日志）' : ''}',
+    );
   }
 
   /// 原始日志条目（最新在前），供页面解析为卡片展示

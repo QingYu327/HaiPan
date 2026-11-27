@@ -11,6 +11,44 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-27 · Batch87：构建并发布 1.0.1+4145
+
+### 范围
+- 版本：`jw_app/pubspec.yaml` → `1.0.1+4145`；文档基线同步。
+- 构建：Android arm64 Release APK；Release 资产名 `haipan-app-release.apk`。
+- 内容：Batch86 的灵动岛反馈、日志设置、关于页文案与官网导航调整。
+
+### 决策
+- 构建号从 4144 递增到 4145，Release tag 使用 `v1.0.1+4145`，不使用同 tag 覆盖旧包。
+- 发版前用 `tool/check_version.ps1 -Tag v1.0.1+4145` 校验 pubspec 与 tag 一致。
+
+### 验证
+- `flutter analyze` 无 issue、`flutter test` 通过。
+- `check_version.ps1` 对 `v1.0.1+4145` 通过。
+- APK：`cn.gdou.xiuhong` / versionName `1.0.1` / versionCode `4145`，24,065,921 字节，SHA-256 `6614e6c48b7e0c383323908497c8ccebfeaefb4093eda693a306a4d94d4892e9`。
+- Release 标记 latest。
+
+## 2026-11-27 · Batch86：补齐灵动岛反馈、日志设置入口与官网导航/版本清理
+
+### 范围
+- 客户端：`about_page.dart`（介绍文案）、`common.dart`（刷新成功文案可定制、切换学期反馈）、`log_page.dart`（日志设置卡与反馈）、`debug_page.dart`（复用日志设置组件）、`app_log.dart`（容量与设置留痕）、`settings_page.dart`、`favorite_rooms_page.dart`、`rank_page.dart`、`ge_credit_page.dart`、`update_page.dart`、`tunnel_page.dart`、`storage_page.dart`、`grade_page.dart`、`exam_page.dart`、`academic_page.dart`、`timetable_page.dart`、`usage_page.dart`。
+- 官网：`site/docs.html`、`site/notes.html` 改为与首页一致的汉堡菜单；`site/assets/pages.css`、`pages.js` 增加窄屏菜单；三页移除硬编码版本号/构建号。
+
+### 决策
+- 关于页介绍改为「在线查询学业情况、空教室和排名，支持离线缓存课表与课程提醒」。
+- 刷新/查询类操作统一给出具体反馈：成绩、考试、学业、课表、通识学分、统计、排名、空教室查询、收藏/取消收藏、通道测速、检查更新、日志清空/导出等均有对应灵动岛文案；`InkRefresh` 新增 `successMessage` 便于各页定制。
+- 日志设置（输出详细日志、保留天数）从调试页抽为 `LogDetailRow` / `LogRetentionRow`，日志页与调试页共用；关闭详细日志时日志页不再展示 D 级条目，保留天数变化会立即清理并记录清理条数，确保开关有实际效果。
+- 日志内存上限 800 → 2000；日志开关与保留天数的变更本身写入日志。
+- 官网窄屏（≤860px）隐藏文字导航，统一收进汉堡菜单；桌面仍保留完整导航。移除页面中的固定版本号与构建号，版本以应用内「关于」和 Release 为准。
+
+### 验证
+- `flutter analyze` 无 issue。
+- 官网 390 / 760 / 900 三档实测：窄屏 `.links` 隐藏、菜单按钮显示、展开后 3 个入口可见且 `body.menu-open` 生效；900px 恢复桌面导航；`scrollWidth == clientWidth`，无横向溢出。
+- 本批改动随 Batch87 的 `1.0.1+4145` 构建发布。
+
+### 遗留
+- 官网版本号已改为「最新版 / 以应用内显示为准」，后续发版无需再改静态页。
+
 ## 2026-11-26 · Batch85：更新通道版本源改为安装包 + 官网三页与文档刷新
 
 ### 范围

@@ -7,7 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/models.dart';
 import '../../providers/data_providers.dart';
 import '../../theme/ink_tokens.dart';
+import '../../util/app_log.dart';
 import '../widgets/common.dart';
+import '../widgets/ink_notice.dart';
 import '../widgets/ink_page.dart';
 
 /// 通识教育拓展课学分统计：按子分类（KCGSMC）汇总已修学分，
@@ -185,6 +187,7 @@ class _GeCreditPageState extends ConsumerState<GeCreditPage> {
           ];
           return InkRefresh(
             onRefresh: refresh,
+            successMessage: '通识拓展学分已刷新',
             child: ListView(
               primary: false,
               physics: const AlwaysScrollableScrollPhysics(),
@@ -278,7 +281,16 @@ class _GeCreditPageState extends ConsumerState<GeCreditPage> {
         ),
       ),
     );
-    if (saved != null) await _saveMin(name, saved);
+    if (saved != null) {
+      await _saveMin(name, saved);
+      AppLog.d('通识学分', '$name 最低要求改为 ${saved.toStringAsFixed(1)}');
+      if (mounted) {
+        showInkToast(
+          context,
+          '$name 最低要求已设为 ${saved.toStringAsFixed(1)} 学分',
+        );
+      }
+    }
   }
 
   double _earned(List<AcademicCourse> list) =>

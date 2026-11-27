@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/usage_api.dart';
 import '../../theme/ink_tokens.dart';
+import '../../util/app_log.dart';
 import '../../util/server_config.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/ink_dialog.dart';
@@ -60,6 +61,8 @@ class _TunnelPageState extends State<TunnelPage> {
         _testing.remove(b);
       });
     }));
+    AppLog.d('通道', '全部入口测速完成：${_latency.length} 个');
+    if (mounted) showInkToast(context, '测速完成，共 ${_latency.length} 个入口');
   }
 
   Future<void> _activate(TunnelEndpoint e) async {

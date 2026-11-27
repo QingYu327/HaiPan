@@ -102,6 +102,8 @@ class _LogPageState extends State<LogPage> {
   List<_LogEntry> get _visible {
     final q = _filter.text.trim().toLowerCase();
     return _entries.where((e) {
+      // 关闭详细日志后不再展示调试级条目，开关效果立即可见
+      if (!AppLog.debugDetail && e.level == 'D') return false;
       if (_level != 'ALL' && e.level != _level) return false;
       if (_tag != 'ALL' && e.tag != _tag) return false;
       if (q.isNotEmpty &&
@@ -140,6 +142,8 @@ class _LogPageState extends State<LogPage> {
     }
     try {
       await _fileCh.invokeMethod('saveLog', {'text': buf.toString()});
+      AppLog.d('日志', '导出 ${visible.length} 条日志');
+      if (mounted) showInkToast(context, '已打开保存面板，选择位置即可导出');
     } catch (e) {
       if (mounted) {
         showInkToast(context, '导出失败：$e', error: true);
@@ -160,6 +164,7 @@ class _LogPageState extends State<LogPage> {
       _filter.clear();
       _tag = 'ALL';
       _reload();
+      if (mounted) showInkToast(context, '日志已清空');
     }
   }
 
@@ -255,6 +260,17 @@ class _LogPageState extends State<LogPage> {
       body: Column(
         children: [
           const SizedBox(height: InkSpacing.xs),
+          // 日志输出设置：详细级别开关 + 保留天数，改完立即生效并提示
+          InkCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                LogDetailRow(onChanged: _reload),
+                const LogRetentionRow(),
+              ],
+            ),
+          ),
+          const SizedBox(height: InkSpacing.s),
           // 级别分区：全部 / 错误 / 警告 / 调试
           SizedBox(
             width: double.infinity,
@@ -412,5 +428,86 @@ class _LogCard extends StatelessWidget {
   String _time(DateTime t) {
     String p(int v) => v.toString().padLeft(2, '0');
     return '${p(t.hour)}:${p(t.minute)}:${p(t.second)}';
+  }
+}
+
+/// 输出详细日志开关：关闭=查看级（仅 W/E），打开=调试级（含 D 级细节）。
+/// 日志页与调试页共用同一组件，改完立即生效并持久化。
+class LogDetailRow extends StatefulWidget {
+  const LogDetailRow({super.key, this.onChanged});
+
+  final VoidCallback? onChanged;
+
+  @override
+  State<LogDetailRow> createState() => _LogDetailRowState();
+}
+
+class _LogDetailRowState extends State<LogDetailRow> {
+  @override
+  Widget build(BuildContext context) {
+    return InkSettingTile(
+      title: '输出详细日志',
+      subtitle: '开启后记录调试级细节，便于定位问题',
+      icon: AppIcons.tune,
+      iconTone: InkTone.info,
+      trailing: Switch(
+        value: AppLog.debugDetail,
+        onChanged: (on) async {
+          await AppLog.setDetail(on);
+          if (!context.mounted) return;
+          setState(() {});
+          widget.onChanged?.call();
+          showInkToast(
+            context,
+            on ? '已开启详细日志（调试级）' : '已关闭详细日志（仅警告与错误）',
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 日志保留天数选择（超过的天数自动清理），日志页与调试页共用。
+class LogRetentionRow extends StatefulWidget {
+  const LogRetentionRow({super.key});
+
+  @override
+  State<LogRetentionRow> createState() => _LogRetentionRowState();
+}
+
+class _LogRetentionRowState extends State<LogRetentionRow> {
+  @override
+  Widget build(BuildContext context) {
+    return InkSettingTile(
+      title: '日志保留',
+      subtitle: '超过保留天数的日志会自动清理',
+      icon: AppIcons.time,
+      iconTone: InkTone.info,
+      showDivider: false,
+      trailing: SegmentedButton<int>(
+        showSelectedIcon: false,
+        style: const ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: WidgetStatePropertyAll(Size(0, 32)),
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 8),
+          ),
+          textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
+        ),
+        segments: const [
+          ButtonSegment(value: 3, label: Text('3 天')),
+          ButtonSegment(value: 7, label: Text('7 天')),
+          ButtonSegment(value: 30, label: Text('30 天')),
+        ],
+        selected: {AppLog.retentionDays},
+        onSelectionChanged: (sel) async {
+          await AppLog.setRetention(sel.first);
+          if (!context.mounted) return;
+          setState(() {});
+          showInkToast(context, '日志保留已设为 ${sel.first} 天');
+        },
+      ),
+    );
   }
 }

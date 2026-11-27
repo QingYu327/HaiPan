@@ -45,6 +45,7 @@ class GradePage extends ConsumerWidget {
           resetAutoFallback('grade');
           return InkRefresh(
             onRefresh: refresh,
+            successMessage: '成绩已刷新，共 ${list.length} 门',
             child: ListView(
               primary: false,
               physics: const AlwaysScrollableScrollPhysics(),

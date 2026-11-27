@@ -5,8 +5,10 @@ import '../../models/models.dart';
 import '../../providers/data_providers.dart';
 import '../../providers/session_provider.dart';
 import '../../theme/ink_tokens.dart';
+import '../../util/app_log.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
+import '../widgets/ink_notice.dart';
 import '../widgets/ink_page.dart';
 
 class RankPage extends ConsumerStatefulWidget {
@@ -22,6 +24,7 @@ class _RankPageState extends ConsumerState<RankPage> {
   String _cjxzm = 'zdz'; // 成绩性质
   String _tjfw = 'bj'; // 统计范围
   bool _queried = false; // 是否已点击过查询
+  String? _notifiedKey; // 已提示过的查询条件，避免同一结果重复弹提示
 
   /// 学年学期 value(如 202512) → 可读标签（2025-2026-2）
   static String termDisplay(String v) {
@@ -48,6 +51,22 @@ class _RankPageState extends ConsumerState<RankPage> {
   @override
   Widget build(BuildContext context) {
     final meta = ref.watch(rankMetaProvider);
+    // 查询结果回来后给一次灵动岛反馈（同一条件只提示一次）
+    if (_queried && _qs != null && _zz != null) {
+      final key = '$_qs|$_zz|$_cjxzm|$_tjfw';
+      ref.listen(rankResultProvider((_qs!, _zz!, _cjxzm, _tjfw)), (prev, next) {
+        next.whenData((r) {
+          if (!context.mounted || _notifiedKey == key) return;
+          _notifiedKey = key;
+          showInkToast(
+            context,
+            r.items.isEmpty
+                ? '查询完成：该范围暂无排名数据'
+                : '排名查询完成，共 ${r.items.length} 条记录',
+          );
+        });
+      });
+    }
     return InkPageScaffold(
       showBack: true,
       title: '绩点排名',
@@ -144,7 +163,14 @@ class _RankPageState extends ConsumerState<RankPage> {
             FilledButton.icon(
               onPressed: (_qs == null || _zz == null)
                   ? null
-                  : () => setState(() => _queried = true),
+                  : () {
+                      AppLog.d(
+                        '排名',
+                        '查询 $_qs ~ $_zz 性质=$_cjxzm 范围=$_tjfw',
+                      );
+                      setState(() => _queried = true);
+                      showInkToast(context, '正在查询排名…');
+                    },
               icon: const Icon(AppIcons.search, size: 18),
               label: const Text('查询'),
             ),

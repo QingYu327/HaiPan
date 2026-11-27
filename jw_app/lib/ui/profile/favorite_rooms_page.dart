@@ -217,8 +217,9 @@ class _FavoriteRoomsPageState extends ConsumerState<FavoriteRoomsPage> {
 
   /// 收藏开关：点一次收藏，再点一次取消
   Future<void> _toggleFav(EmptyRoom r) async {
+    final wasFav = _favRooms.any((f) => _sameRoom(f, r));
     setState(() {
-      if (_favRooms.any((f) => _sameRoom(f, r))) {
+      if (wasFav) {
         _favRooms = _favRooms.where((f) => !_sameRoom(f, r)).toList();
         AppLog.d('空教室', '取消收藏 ${r.cdmc}');
       } else {
@@ -227,6 +228,8 @@ class _FavoriteRoomsPageState extends ConsumerState<FavoriteRoomsPage> {
       }
     });
     await _saveFav(_favRooms);
+    if (!mounted) return;
+    showInkToast(context, wasFav ? '已取消收藏 ${r.cdmc}' : '已收藏 ${r.cdmc}');
   }
 
   Future<void> _removeFav(EmptyRoom r) async {
@@ -236,6 +239,7 @@ class _FavoriteRoomsPageState extends ConsumerState<FavoriteRoomsPage> {
     );
     await _saveFav(_favRooms);
     AppLog.d('空教室', '删除收藏 ${r.cdmc}（${before - _favRooms.length}>0）');
+    if (mounted) showInkToast(context, '已删除收藏 ${r.cdmc}');
   }
 
   Future<void> _addFavByInput() async {
@@ -321,7 +325,17 @@ class _FavoriteRoomsPageState extends ConsumerState<FavoriteRoomsPage> {
         _loading = false;
         _rooms = sorted;
       });
-      if (list.isEmpty) showInkToast(context, '未查到空闲教室');
+      if (list.isEmpty) {
+        showInkToast(context, '未查到空闲教室');
+      } else {
+        showInkToast(
+          context,
+          _unionUsed
+              ? '查到 ${sorted.length} 间空闲教室（已按所选时段合并）'
+              : '查到 ${sorted.length} 间空闲教室',
+        );
+      }
+      AppLog.d('空教室', '查询完成：${sorted.length} 间（合并=$_unionUsed）');
     } catch (e) {
       if (!mounted || gen != _searchGen) return;
       AppLog.e('空教室', '查询失败：$e');

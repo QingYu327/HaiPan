@@ -76,8 +76,8 @@ class _AboutPageState extends ConsumerState<AboutPage> {
               Text('海畔', style: context.tsSection),
               const SizedBox(height: InkSpacing.s),
               Text(
-                '一款支持课表、成绩、考试与空教室查询等功能，'
-                '同时离线缓存课表与课程提醒的课表 APP。',
+                '一款可以在线查询学业情况、空教室和排名信息，'
+                '同时支持离线缓存课表和课程提醒等功能的课表APP',
                 textAlign: TextAlign.center,
                 style: context.tsSecondary.copyWith(height: 1.6),
               ),

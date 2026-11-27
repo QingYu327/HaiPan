@@ -54,6 +54,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
       }
       _notes = next;
     });
+    showInkToast(context, text.isEmpty ? '备注已清除' : '备注已保存');
   }
 
   Future<String?> _promptNote(String xh, String current) async {
@@ -118,6 +119,7 @@ class _UsagePageState extends ConsumerState<UsagePage> {
         ),
         data: (d) => InkRefresh(
           onRefresh: _refresh,
+          successMessage: '统计数据已刷新',
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.only(

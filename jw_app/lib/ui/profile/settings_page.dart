@@ -398,9 +398,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               children: [
                 for (final c in _bgColors)
                   GestureDetector(
-                    onTap: () => ref
-                        .read(settingsProvider.notifier)
-                        .setBackgroundSeed(c),
+                    onTap: () {
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setBackgroundSeed(c);
+                      showInkToast(context, '背景色已更新');
+                    },
                     child: Container(
                       width: 34,
                       height: 34,
@@ -452,6 +455,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ref
                           .read(settingsProvider.notifier)
                           .setBackgroundBlur(v);
+                      showInkToast(context, '背景模糊已调整');
                     },
                   ),
                 ),
@@ -478,6 +482,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return GestureDetector(
       onTap: () async {
         await ref.read(settingsProvider.notifier).setBackgroundStyle(style);
+        if (!context.mounted) return;
+        showInkToast(context, '背景已切换为「$label」');
         if (style == 'image' &&
             ref.read(settingsProvider).backgroundImage.isEmpty) {
           await _pickLocalImage(ref);

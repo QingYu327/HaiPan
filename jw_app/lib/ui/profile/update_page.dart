@@ -65,6 +65,10 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
         _done = true;
         _result = r;
       });
+      showInkToast(
+        context,
+        r.hasUpdate ? '发现新版本 v${r.version}' : '当前已是最新版本',
+      );
     } catch (e) {
       if (!mounted) return;
       AppLog.e('更新', '检查更新失败：$e');

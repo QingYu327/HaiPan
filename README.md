@@ -4,7 +4,7 @@
 
 > 学习交流用途的非官方项目，与学校官方无关，请以教务系统官方数据为准。
 
-- 当前版本：`1.0.1+4144`（正式线固定 `1.0.1`，只递增构建号）
+- 当前版本：`1.0.1+4145`（正式线固定 `1.0.1`，只递增构建号）
 - 技术文档：[docs/PROJECT.md](docs/PROJECT.md)（现状）、[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（架构）、[docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md)（经验）
 - 官网：[site/index.html](site/index.html)，线上仓库 [QingYu327/haipan-website](https://github.com/QingYu327/haipan-website)（Netlify 自动部署）
 
@@ -67,7 +67,7 @@ docker compose up -d --build
 
 ## 4. 版本与发布
 
-- Release 标签格式：`v1.0.1+<构建号>`，例如 `v1.0.1+4144`
+- Release 标签格式：`v1.0.1+<构建号>`，例如 `v1.0.1+4145`
 - APK 资产名固定为 `haipan-app-release.apk`，官网下载直链依赖该名称
 - 发布前运行 `jw_app/tool/check_version.ps1 -Tag v1.0.1+<构建号>`，确保 pubspec、tag 一致
 - Release 需要标记为 latest；客户端更新页读取 GitHub `releases/latest`

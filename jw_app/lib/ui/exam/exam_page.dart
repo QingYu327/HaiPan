@@ -61,6 +61,7 @@ class _ExamPageState extends ConsumerState<ExamPage> {
           resetAutoFallback('exam');
           return InkRefresh(
             onRefresh: refresh,
+            successMessage: '考试安排已刷新，共 ${list.length} 场',
             child: ListView(
               primary: false,
               physics: const AlwaysScrollableScrollPhysics(),
