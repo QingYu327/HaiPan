@@ -85,7 +85,7 @@
 4. **UI 层**：`ui/<模块>/页面`，注意统一用 `AppNotification` 做顶部灵动岛提示、`FadeUpwardsPageTransitionsBuilder` 过渡。
 5. **构建验证**：`flutter analyze` → `flutter test` → `.\tool\check_version.ps1` → `flutter build apk --release --target-platform android-arm64 --build-number=<递增>` → 装真机验证；同批改动记入 `docs/modification_log.md`。
 6. **后端部署**：先备份远端 `server.js` → 上传 → `docker compose up -d --build` → 容器内 grep 校验 → 探测关键接口。
-7. **发布**：更新 `docs/release_notes_v1.0.1.md`（或当版说明）→ 建 `v1.0.1+<构建号>` Release → 上传 `haipan-app-release.apk` 并标记 latest。
+7. **发布**：更新当版 `docs/release_notes_v1.0.2.md` → 建 `v1.0.2+<构建号>` Release → 上传 `haipan-app-release.apk` 并标记 latest。
 8. **官网**：三页源文件在 `site/`，同步到 `QingYu327/haipan-website`，Netlify 自动部署；改版本标签时首页、文档、注意事项一起改。
 
 ## 5. 环境 / 约定备忘
@@ -106,4 +106,4 @@
 - 通知权限在严格管控的设备上已降级为普通通知，仍需在真机机型上回归。
 - 设备认证失败文案已分层：服务端 4xx 显示“学号验证失败”，超时/断网才显示“通道连接失败”。
 - 名单内学号换设备默认自动重绑（旧会话失效，单设备生效）；管理员可在 APP「用户统计」页关闭该开关，关闭后换绑需 `resetDevice`，管理端重置始终保留。
-- 情侣课表首版已实现（服务器中转 + 6 位配对码、合并课表 + 共同空闲、仅同步课名/时间/地点/周次）；4147 已在模拟器验证，尚未正式发布。
+- 情侣课表首版已实现（服务器中转 + 6 位配对码、合并课表 + 共同空闲、仅同步课名/时间/地点/周次），并以 Beta 形式随 `1.0.2+10` 正式发布。

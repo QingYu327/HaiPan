@@ -1,6 +1,6 @@
 # jw_app · 工程入口
 
-「海畔」主工程，包名 `cn.gdou.xiuhong`，版本 `1.0.1+4147`，当前仅 Android。
+「海畔」主工程，包名 `cn.gdou.xiuhong`，版本 `1.0.2+10`，当前仅 Android。
 
 ## 入口
 
@@ -54,8 +54,8 @@ flutter build apk --release --target-platform android-arm64 --build-number=<递�
 
 ## 版本与发布
 
-1. 修改 `pubspec.yaml` 的 `version`（正式线固定 `1.0.1`，只递增 `+构建号`）。
-2. 运行 `.\tool\check_version.ps1 -Tag v1.0.1+<构建号>`。
+1. 修改 `pubspec.yaml` 的 `version`（正式线 `1.0.2`，构建号随发布递增）。
+2. 运行 `.\tool\check_version.ps1 -Tag v1.0.2+<构建号>`。
 3. 构建 APK，安装真机验收。
 4. 在 GitHub `QingYu327/HaiPan` 创建同名 tag 的 Release，上传 APK，资产名固定 `haipan-app-release.apk`，标记 latest。
 5. 运行日志追加到 `docs/modification_log.md`。

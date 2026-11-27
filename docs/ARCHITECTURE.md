@@ -1,6 +1,6 @@
 # 技术架构 · 海畔
 
-> 面向开发与运维的现状说明书。版本基线：`1.0.1+4147`（2026-11-27）。
+> 面向开发与运维的现状说明书。版本基线：`1.0.2+10`（2026-11-27）。
 > 开工前先读 [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)；踩坑与决策依据见 [LESSONS_LEARNED.md](LESSONS_LEARNED.md)。
 
 ## 1. 系统组成
@@ -176,7 +176,7 @@ App                         云端 /device/register        Keystore
 6. 复制到桌面 `海畔_<版本>.apk`，交付链接用 `computer://`。
 7. 后端有改动时同步部署 NAS 并验证 `/health` 与关键接口。
 
-发布：Release 标签形如 `v1.0.1+<构建号>`，APK 资产名固定 `haipan-app-release.apk`，并标记 latest；官网下载直链与客户端更新都依赖该命名。
+发布：Release 标签形如 `v1.0.2+<构建号>`，APK 资产名固定 `haipan-app-release.apk`，并标记 latest；官网下载直链与客户端更新都依赖该命名。
 
 签名：`jw_app/android/upload-keystore.jks`，口令在 `jw_app/android/key.properties`（已 gitignore），务必备份以保证升级签名一致。
 
