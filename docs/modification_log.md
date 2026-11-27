@@ -24,7 +24,9 @@
 - 已通过 ADB 安装到 `192.168.6.206:38609`（4145 → 4146）并启动。
 
 ### 部署
-- 待推送后补充。
+- `QingYu327/HaiPan`：`0666d32`（main）。
+- Release `v1.0.1+4146`（latest），资产 `haipan-app-release.apk`。
+- 官网 `QingYu327/haipan-website`：`f3f7321`（main，Netlify 自动部署）；Gitee：`056c333`（master）。
 
 ## 2026-11-27 · Batch88：官网文档/须知导航与文案重写
 
