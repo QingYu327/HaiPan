@@ -102,8 +102,6 @@ class _LogPageState extends State<LogPage> {
   List<_LogEntry> get _visible {
     final q = _filter.text.trim().toLowerCase();
     return _entries.where((e) {
-      // 关闭详细日志后不再展示调试级条目，开关效果立即可见
-      if (!AppLog.debugDetail && e.level == 'D') return false;
       if (_level != 'ALL' && e.level != _level) return false;
       if (_tag != 'ALL' && e.tag != _tag) return false;
       if (q.isNotEmpty &&
@@ -260,17 +258,6 @@ class _LogPageState extends State<LogPage> {
       body: Column(
         children: [
           const SizedBox(height: InkSpacing.xs),
-          // 日志输出设置：详细级别开关 + 保留天数，改完立即生效并提示
-          InkCard(
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                LogDetailRow(onChanged: _reload),
-                const LogRetentionRow(),
-              ],
-            ),
-          ),
-          const SizedBox(height: InkSpacing.s),
           // 级别分区：全部 / 错误 / 警告 / 调试
           SizedBox(
             width: double.infinity,
@@ -432,11 +419,8 @@ class _LogCard extends StatelessWidget {
 }
 
 /// 输出详细日志开关：关闭=查看级（仅 W/E），打开=调试级（含 D 级细节）。
-/// 日志页与调试页共用同一组件，改完立即生效并持久化。
 class LogDetailRow extends StatefulWidget {
-  const LogDetailRow({super.key, this.onChanged});
-
-  final VoidCallback? onChanged;
+  const LogDetailRow({super.key});
 
   @override
   State<LogDetailRow> createState() => _LogDetailRowState();
@@ -447,7 +431,6 @@ class _LogDetailRowState extends State<LogDetailRow> {
   Widget build(BuildContext context) {
     return InkSettingTile(
       title: '输出详细日志',
-      subtitle: '开启后记录调试级细节，便于定位问题',
       icon: AppIcons.tune,
       iconTone: InkTone.info,
       trailing: Switch(
@@ -456,7 +439,6 @@ class _LogDetailRowState extends State<LogDetailRow> {
           await AppLog.setDetail(on);
           if (!context.mounted) return;
           setState(() {});
-          widget.onChanged?.call();
           showInkToast(
             context,
             on ? '已开启详细日志（调试级）' : '已关闭详细日志（仅警告与错误）',
@@ -467,7 +449,7 @@ class _LogDetailRowState extends State<LogDetailRow> {
   }
 }
 
-/// 日志保留天数选择（超过的天数自动清理），日志页与调试页共用。
+/// 日志保留天数选择（超过的天数自动清理）。
 class LogRetentionRow extends StatefulWidget {
   const LogRetentionRow({super.key});
 
@@ -480,10 +462,8 @@ class _LogRetentionRowState extends State<LogRetentionRow> {
   Widget build(BuildContext context) {
     return InkSettingTile(
       title: '日志保留',
-      subtitle: '超过保留天数的日志会自动清理',
       icon: AppIcons.time,
       iconTone: InkTone.info,
-      showDivider: false,
       trailing: SegmentedButton<int>(
         showSelectedIcon: false,
         style: const ButtonStyle(
