@@ -11,11 +11,11 @@ class BuildInfo {
   static const MethodChannel _channel = MethodChannel('cn.gdou.xiuhong/app');
 
   /// 原生通道不可用时的兜底值；可通过
-  /// `--dart-define=APP_VERSION=1.0.2 --dart-define=APP_BUILD=10` 覆盖。
+  /// `--dart-define=APP_VERSION=1.0.2 --dart-define=APP_BUILD=4148` 覆盖。
   static const String _fallbackVersion =
       String.fromEnvironment('APP_VERSION', defaultValue: '1.0.2');
   static const int _fallbackBuild =
-      int.fromEnvironment('APP_BUILD', defaultValue: 10);
+      int.fromEnvironment('APP_BUILD', defaultValue: 4148);
 
   static String _version = _fallbackVersion;
   static int _build = _fallbackBuild;

@@ -1,6 +1,6 @@
 # jw_app · 工程入口
 
-「海畔」主工程，包名 `cn.gdou.xiuhong`，版本 `1.0.2+10`，当前仅 Android。
+「海畔」主工程，包名 `cn.gdou.xiuhong`，版本 `1.0.2+4148`，当前仅 Android。
 
 ## 入口
 

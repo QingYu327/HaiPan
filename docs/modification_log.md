@@ -11,10 +11,10 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
-## 2026-11-27 · Batch91：发布 1.0.2+10（情侣课表 Beta、本地占用、登录提示）
+## 2026-11-27 · Batch91：发布 1.0.2+4148（情侣课表 Beta、本地占用、登录提示）
 
 ### 范围
-- 客户端版本：`pubspec.yaml` → `1.0.2+10`；`build_info.dart` 兜底值同步。
+- 客户端版本：`pubspec.yaml` → `1.0.2+4148`；`build_info.dart` 兜底值同步。
 - 登录提示精炼：顶部横幅、登录被拒、通道 403 三段文案统一为校园网 / 管理员引导；`usage_api.dart` 的服务端拒绝文案同步。
 - 本地占用：扫描应用私有目录全部数据，圆环不足 1 MB 时按 KB 显示。
 - 情侣课表：入口增加 Beta 标签，页内新增可关闭的稳定性提示（本机持久化）。
@@ -23,16 +23,16 @@
 - 更新日志：`docs/release_notes_v1.0.2.md` 仅保留 APP 内容，移除官网章节与对比首段，改为正式说明语气。
 
 ### 决策
-- 正式线由 `1.0.1` 调整为 `1.0.2`，构建号重置为 10，tag 使用 `v1.0.2+10`，不复用旧 tag。
+- 正式线由 `1.0.1` 调整为 `1.0.2`。构建号 10 低于旧包 versionCode（4146），会触发 Android 版本降级拒绝，故沿用递增序列改为 4148，tag 使用 `v1.0.2+4148`。
 - 情侣课表以 Beta 形式发布；稳定性提示关闭后写入本机 `couple.beta_closed`，不再重复打扰。
 
 ### 验证
-- `flutter analyze` 无 issue；`check_version.ps1 -Tag v1.0.2+10` 通过。
-- APK：versionName `1.0.2`、versionCode `10`，24,131,557 字节，SHA-256 `7D62056D2C28E322056CDBB478CC3562E5FD1912D0D3D93406AD057D7EA940E8`。
+- `flutter analyze` 无 issue；`check_version.ps1 -Tag v1.0.2+4148` 通过。
+- APK：versionName `1.0.2`、versionCode `4148`，24,131,557 字节，SHA-256 `670F4F52E5057C992E1D94E705B54067573EF1D3F033B94C3EA142F340341B95`。
 - 官网桌面 1617px 实测：下载卡片左右分栏，标签已移除。
 
 ### 部署
-- 客户端提交 `0cd68dd`；Release `v1.0.2+10`（latest），资产 `haipan-app-release.apk`。
+- 客户端提交见发布提交；Release `v1.0.2+4148`（latest），资产 `haipan-app-release.apk`。
 - 官网 GitHub `45442ba`（Netlify 自动部署）；Gitee `45442ba`（强制同步镜像）。
 
 ## 2026-11-27 · Batch90：情侣课表首版（4147，模拟器验证）
