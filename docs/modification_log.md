@@ -27,6 +27,10 @@
 - 三页 `scrollWidth == clientWidth`，无横向溢出；本地链接、锚点与重复 ID 校验通过。
 - 本次仅改官网，未重新构建 APK，版本仍为 `1.0.1+4145`。
 
+### 部署
+- `QingYu327/HaiPan`：`ea54f0b`（main）。
+- 官网 `QingYu327/haipan-website`：`9e25711`（main，Netlify 自动部署）；Gitee：`ec54744`（master）。
+
 ## 2026-11-27 · Batch87：构建并发布 1.0.1+4145
 
 ### 范围
