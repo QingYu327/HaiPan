@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_bg">#0F171D</color>
+    <color name="widget_bg">#E61A2228</color>
     <color name="widget_text">#EDF3F6</color>
     <color name="widget_muted">#B4C5CF</color>
     <color name="widget_hairline">#2A3A44</color>
     <color name="widget_accent">#8FB9D6</color>
+
+    <color name="widget_glass_shadow">#66000000</color>
+    <color name="widget_glass_highlight">#2EFFFFFF</color>
+    <color name="widget_glass_border">#40FFFFFF</color>
+    <color name="widget_panel">#14FFFFFF</color>
+    <color name="widget_divider">#2EFFFFFF</color>
 </resources>

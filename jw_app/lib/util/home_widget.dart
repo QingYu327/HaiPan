@@ -19,6 +19,16 @@ class HomeWidgetSync {
   static const _ch = MethodChannel('cn.gdou.xiuhong/widget');
   static const _key = 'widget.payload';
 
+  /// 仅请求原生重绘（作息时间等配置变化时使用，不需要重写数据快照）
+  static Future<void> refresh() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _ch.invokeMethod('refresh');
+    } catch (e) {
+      AppLog.w('小组件', '刷新失败：$e');
+    }
+  }
+
   static Future<void> update(Timetable timetable, List<Exam> exams) async {
     if (!Platform.isAndroid) return;
     try {

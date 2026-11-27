@@ -55,12 +55,11 @@ class CasAuthApi {
       final dir = await getApplicationSupportDirectory();
       final path = '${dir.path}${Platform.pathSeparator}cas_cookies';
       _jar = PersistCookieJar(storage: FileStorage(path));
-      _dio.interceptors.add(CookieManager(_jar!));
     } catch (e) {
       _jar = CookieJar();
-      _dio.interceptors.add(CookieManager(_jar!));
       AppLog.w('登录', '认证 Cookie 持久化失败，退回内存存储：$e');
     } finally {
+      _resetDio();
       _readyCompleter.complete();
     }
   }
@@ -87,18 +86,33 @@ class CasAuthApi {
     await clearCookies();
   }
 
-  /// 切换学号时清空认证会话，避免复用上一个账号的 Cookie
-  Future<void> clearCookies() async {    await ready;
+  /// 切换学号 / 退出登录时清空认证会话，避免复用上一个账号的 Cookie
+  Future<void> clearCookies() async {
+    await ready;
+    // 作废旧登录页的在飞预检，并中断其请求：
+    // 否则旧请求可能在清理后回写 Cookie / 登录页参数，导致重新登录时
+    // 用上一会话的 execution、salt 提交，被认证中心判成「账号或密码错误」。
+    _generation++;
+    _prepareFuture = null;
+    _resetDio();
     await _jar?.deleteAll();
     _prefetched = null;
     _prepared = false;
     _salt = '';
     _hidden.clear();
     _mfaPending = false;
+    _mfaUser = '';
+    _mfaType = '4';
+    _mfaService = _directService;
+    _mfaViewUrl = '';
     AppLog.d('登录', '已清空统一身份认证会话');
   }
 
-  late final Dio _dio = _build();
+  /// 认证会话代次：清理后递增，旧的异步结果不再回写状态。
+  int _generation = 0;
+  bool _dioInitialized = false;
+
+  late Dio _dio = _build();
 
   Dio _build() {
     final d = Dio(BaseOptions(
@@ -113,7 +127,23 @@ class CasAuthApi {
       },
     ));
     d.httpClientAdapter = _adapterFor(_proxyPort);
+    final jar = _jar;
+    if (jar != null) d.interceptors.add(CookieManager(jar));
+    _dioInitialized = true;
     return d;
+  }
+
+  /// 重建 Dio：强制断开旧的 keep-alive 连接并取消在飞请求。
+  void _resetDio() {
+    if (_dioInitialized) {
+      try {
+        _dio.close(force: true);
+      } catch (_) {
+        // 关闭失败不阻塞清理
+      }
+      _dioInitialized = false;
+    }
+    _dio = _build();
   }
 
   /// 校外环境由登录页在通道就绪后调用，后续请求经本地隧道访问认证中心。
@@ -212,6 +242,7 @@ class CasAuthApi {
 
   Future<void> _doPrepare() async {
     await ready;
+    final gen = _generation;
     final resp = await _dio.get(
       '/authserver/login',
       queryParameters: {'service': _directService},
@@ -220,6 +251,10 @@ class CasAuthApi {
         validateStatus: (s) => s != null && s < 500,
       ),
     );
+    if (gen != _generation) {
+      AppLog.d('登录', '登录页预检结果已过期（会话已清理），丢弃');
+      return;
+    }
     final html = resp.data is String ? resp.data as String : '';
     // 认证中心会话未过期时，GET login 会直接带票据跳回教务
     if (resp.realUri.host == _jwHost) {

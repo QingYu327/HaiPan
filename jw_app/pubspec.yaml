@@ -43,6 +43,7 @@ dependencies:
   path_provider: ^2.1.5
   # 登录密码 RSA 加密（正方返回 modulus/exponent）
   pointycastle: ^4.0.0
+  cryptography: ^2.7.0
   # 本地缓存
   shared_preferences: ^2.5.3
   # 验证码 rtk 随机数

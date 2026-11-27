@@ -77,25 +77,16 @@ const TLS_KEY = process.env.TLS_KEY || path.join(DATA_DIR, 'tls', 'key.pem');
 
 const SESSION_TTL = 30 * 60 * 1000; // 会话 30 分钟
 const CHALLENGE_TTL = 2 * 60 * 1000; // 挑战码 2 分钟且一次性
-const PAIR_CODE_TTL = 10 * 60 * 1000; // 配对码 10 分钟有效
-const PAIR_FAIL_MAX = 5; // 同一学号连续输错 5 次
-const PAIR_FAIL_BLOCK = 10 * 60 * 1000; // 输错后暂停配对 10 分钟
-const PAIR_IDLE_MS = 180 * 24 * 60 * 60 * 1000; // 180 天无同步自动解绑
-const PAIR_MAX_COURSES = 200; // 单次快照最多课程数
-
 // select=抢课(黑名单，默认可用) update=更新(黑名单) app=APP准入(白名单，默认禁止)
 const FEATURES = ['select', 'update', 'app'];
 const DATA_FILE = path.join(DATA_DIR, 'haipan.json');
 
-let state = { users: [], cfg: {}, devices: {}, notes: {}, settings: {}, pairs: {} };
+let state = { users: [], cfg: {}, devices: {}, notes: {}, settings: {} };
 let writeChain = Promise.resolve();
 
 // 会话与挑战码只驻留内存：服务重启后客户端会自动重新认证
 const sessions = new Map();
 const challenges = new Map();
-// 配对码与输错计数只驻留内存：服务重启后重新生成即可
-const pairCodes = new Map(); // code -> { xh, expires }
-const pairFails = new Map(); // xh -> { count, until }
 
 function load() {
   try {
@@ -112,8 +103,6 @@ function load() {
         parsed.settings && typeof parsed.settings === 'object'
           ? parsed.settings
           : {};
-      state.pairs =
-        parsed.pairs && typeof parsed.pairs === 'object' ? parsed.pairs : {};
     }
   } catch (_) {
     // 首次启动或无数据文件：使用空状态
@@ -142,100 +131,6 @@ function listOf(key) {
   const list = state.cfg[key];
   if (!Array.isArray(list)) return [];
   return list.filter((x) => typeof x === 'string' && /^\d{6,20}$/.test(x));
-}
-
-// ---------------- 情侣课表 ----------------
-function pairOf(xh) {
-  const pairs = state.pairs && typeof state.pairs === 'object' ? state.pairs : {};
-  for (const [id, p] of Object.entries(pairs)) {
-    if (p && (p.a === xh || p.b === xh)) return { id, pair: p };
-  }
-  return null;
-}
-
-function pairPartner(pair, xh) {
-  return pair.a === xh ? pair.b : pair.a;
-}
-
-function prunePairs() {
-  const now = Date.now();
-  let changed = false;
-  const pairs = state.pairs && typeof state.pairs === 'object' ? state.pairs : {};
-  for (const [id, p] of Object.entries(pairs)) {
-    const last = Math.max(
-      Number(p.updatedAt) || 0,
-      Number(p.createdAt) || 0,
-      Number(p.snapshots && p.snapshots.a && p.snapshots.a.updatedAt) || 0,
-      Number(p.snapshots && p.snapshots.b && p.snapshots.b.updatedAt) || 0
-    );
-    if (!last || now - last > PAIR_IDLE_MS) {
-      delete pairs[id];
-      changed = true;
-    }
-  }
-  if (changed) save();
-  for (const [code, rec] of pairCodes) {
-    if (!rec || rec.expires <= now) pairCodes.delete(code);
-  }
-}
-
-function clearPairCodes(xh) {
-  for (const [code, rec] of pairCodes) {
-    if (rec && rec.xh === xh) pairCodes.delete(code);
-  }
-}
-
-function pairBlocked(xh) {
-  const f = pairFails.get(xh);
-  if (!f) return false;
-  if (f.until > Date.now()) return true;
-  if (f.until) pairFails.delete(xh);
-  return false;
-}
-
-function notePairFail(xh) {
-  const now = Date.now();
-  const f = pairFails.get(xh) || { count: 0, until: 0 };
-  f.count += 1;
-  if (f.count >= PAIR_FAIL_MAX) {
-    f.count = 0;
-    f.until = now + PAIR_FAIL_BLOCK;
-  }
-  pairFails.set(xh, f);
-  return f.until > now;
-}
-
-function cleanText(v, max) {
-  return String(v == null ? '' : v)
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max);
-}
-
-/** 只保留课名、星期、节次、地点、周次；其余字段一律丢弃 */
-function sanitizeCourses(input) {
-  const out = [];
-  if (!Array.isArray(input)) return out;
-  for (const raw of input) {
-    if (!raw || typeof raw !== 'object') continue;
-    const n = cleanText(raw.n != null ? raw.n : raw.kcmc, 60);
-    const w = Number(raw.w != null ? raw.w : raw.weekday) || 0;
-    const s = Number(raw.s != null ? raw.s : raw.startSection) || 0;
-    const e = Number(raw.e != null ? raw.e : raw.endSection) || 0;
-    const r = cleanText(raw.r != null ? raw.r : raw.room, 40);
-    const weeks = [
-      ...new Set(
-        (Array.isArray(raw.k) ? raw.k : [])
-          .map((x) => Number(x))
-          .filter((x) => Number.isInteger(x) && x >= 1 && x <= 30)
-      ),
-    ].slice(0, 30);
-    if (!n || w < 1 || w > 7 || s < 1 || e < s || e > 20) continue;
-    out.push({ n, w, s, e, r, k: weeks });
-    if (out.length >= PAIR_MAX_COURSES) break;
-  }
-  return out;
 }
 
 function users() {
@@ -642,131 +537,6 @@ async function handle(req, res) {
       });
     }
     return send(res, 405, { ok: false, error: 'method_not_allowed' });
-  }
-
-  // ---- 情侣课表：按学号配对，仅同步课名/时间/地点/周次 ----
-  if (url.pathname === '/pair' || url.pathname.startsWith('/pair/')) {
-    if (!appAllowed(session.xh)) {
-      return send(res, 403, { ok: false, error: 'not_allowed' });
-    }
-    prunePairs();
-    const me = session.xh;
-
-    if (url.pathname === '/pair/code' && req.method === 'POST') {
-      const exist = pairOf(me);
-      if (exist) return send(res, 200, { ok: false, error: 'already_paired' });
-      if (pairBlocked(me)) {
-        return send(res, 429, { ok: false, error: 'too_many_attempts' });
-      }
-      clearPairCodes(me);
-      let code = '';
-      for (let i = 0; i < 20; i += 1) {
-        code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-        if (!pairCodes.has(code)) break;
-      }
-      pairCodes.set(code, { xh: me, expires: now + PAIR_CODE_TTL });
-      console.log('pair code created', maskId(me));
-      return send(res, 200, {
-        ok: true,
-        code,
-        expiresIn: Math.floor(PAIR_CODE_TTL / 1000),
-      });
-    }
-
-    if (url.pathname === '/pair/bind' && req.method === 'POST') {
-      const exist = pairOf(me);
-      if (exist) return send(res, 200, { ok: false, error: 'already_paired' });
-      if (pairBlocked(me)) {
-        return send(res, 429, { ok: false, error: 'too_many_attempts' });
-      }
-      const body = await readBody(req);
-      const code = String(body.code || '').trim();
-      if (!/^\d{6}$/.test(code)) {
-        notePairFail(me);
-        return send(res, 200, { ok: false, error: 'invalid_code' });
-      }
-      const rec = pairCodes.get(code);
-      if (!rec || rec.expires <= now) {
-        pairCodes.delete(code);
-        const blocked = notePairFail(me);
-        return send(res, blocked ? 429 : 200, {
-          ok: false,
-          error: blocked ? 'too_many_attempts' : 'invalid_code',
-        });
-      }
-      const target = rec.xh;
-      if (target === me) return send(res, 200, { ok: false, error: 'self_bind' });
-      if (pairOf(target)) return send(res, 200, { ok: false, error: 'target_paired' });
-      pairCodes.delete(code);
-      clearPairCodes(me);
-      clearPairCodes(target);
-      pairFails.delete(me);
-      if (!state.pairs || typeof state.pairs !== 'object') state.pairs = {};
-      const id = crypto.randomBytes(9).toString('hex');
-      state.pairs[id] = {
-        a: target,
-        b: me,
-        createdAt: now,
-        updatedAt: now,
-        snapshots: {},
-      };
-      await save();
-      console.log('pair created', maskId(target), maskId(me));
-      return send(res, 200, { ok: true, pairId: id });
-    }
-
-    if (url.pathname === '/pair/status' && req.method === 'GET') {
-      const hit = pairOf(me);
-      if (!hit) return send(res, 200, { ok: true, paired: false });
-      const p = hit.pair;
-      const partner = pairPartner(p, me);
-      const my = p.snapshots && p.snapshots[me];
-      const other = p.snapshots && p.snapshots[partner];
-      return send(res, 200, {
-        ok: true,
-        paired: true,
-        pairId: hit.id,
-        myUpdatedAt: Number(my && my.updatedAt) || 0,
-        partnerUpdatedAt: Number(other && other.updatedAt) || 0,
-      });
-    }
-
-    if (url.pathname === '/pair/sync' && req.method === 'POST') {
-      const hit = pairOf(me);
-      if (!hit) return send(res, 200, { ok: false, error: 'not_paired' });
-      const body = await readBody(req);
-      const courses = sanitizeCourses(body.courses);
-      hit.pair.snapshots = hit.pair.snapshots || {};
-      hit.pair.snapshots[me] = { courses, updatedAt: now };
-      hit.pair.updatedAt = now;
-      await save();
-      return send(res, 200, { ok: true, updatedAt: now, count: courses.length });
-    }
-
-    if (url.pathname === '/pair/partner' && req.method === 'GET') {
-      const hit = pairOf(me);
-      if (!hit) return send(res, 200, { ok: false, error: 'not_paired' });
-      const partner = pairPartner(hit.pair, me);
-      const snap = hit.pair.snapshots && hit.pair.snapshots[partner];
-      return send(res, 200, {
-        ok: true,
-        courses: snap && Array.isArray(snap.courses) ? snap.courses : [],
-        updatedAt: Number(snap && snap.updatedAt) || 0,
-      });
-    }
-
-    if (url.pathname === '/pair' && req.method === 'DELETE') {
-      const hit = pairOf(me);
-      if (hit) {
-        delete state.pairs[hit.id];
-        await save();
-        console.log('pair removed', maskId(me));
-      }
-      clearPairCodes(me);
-      return send(res, 200, { ok: true });
-    }
-
-    return send(res, 404, { ok: false, error: 'not_found' });
   }
 
   // ---- 用量统计 ----

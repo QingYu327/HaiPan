@@ -46,6 +46,8 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         cleanupPendingApk()
+        // 回到前台按当前日期重绘，跨天后无需等系统 30 分钟周期
+        ScheduleWidgetBase.refreshAll(this)
         // 等界面恢复后再请求固定小组件，避免在 onCreate 阶段被系统拒绝
         if (pendingPinWidget) {
             pendingPinWidget = false

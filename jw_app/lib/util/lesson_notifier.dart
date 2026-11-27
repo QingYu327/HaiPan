@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import 'app_log.dart';
 import 'local_cache.dart';
+import 'section_times.dart';
 import 'term_utils.dart';
 
 /// 本地系统通知：上课前 N 分钟 + 考试提醒（离线可用）。
@@ -85,23 +86,11 @@ class LessonNotifier {
     }
   }
 
-  /// 节次 → 所在大节开始时间 (时, 分)
-  /// 1-2 08:10 / 3-4 10:15 / 5-6 14:30 / 7-8 16:30 / 9-10 19:30
+  /// 节次 → 上课时间 (时, 分)，按用户设置的作息表读取
   static (int, int)? _sectionStart(int section) {
-    switch ((section + 1) ~/ 2) {
-      case 1:
-        return (8, 10);
-      case 2:
-        return (10, 15);
-      case 3:
-        return (14, 30);
-      case 4:
-        return (16, 30);
-      case 5:
-        return (19, 30);
-      default:
-        return null;
-    }
+    final t = SectionTimes.of(section);
+    if (t == null || !t.isSet) return null;
+    return (t.startMinutes ~/ 60, t.startMinutes % 60);
   }
 
   static String _hhmm(int h, int m) =>

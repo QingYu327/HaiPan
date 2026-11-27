@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../util/app_log.dart';
+import '../util/home_widget.dart';
 import '../util/lesson_notifier.dart';
+import '../util/section_times.dart';
 import '../util/term_utils.dart';
 
 class AppSettings {
@@ -17,6 +19,7 @@ class AppSettings {
   final bool examRemindEnabled; // 考试提醒开关
   final int remindMinutes; // 上课提醒提前分钟数
   final int examRemindMinutes; // 考试提醒提前分钟数
+  final List<SectionTime> sectionTimes; // 各节上课 / 下课时间
 
   // 自定义背景：ink=默认宣纸，其余为预设渐变；solid=纯色，image=图片
   final String backgroundStyle;
@@ -35,6 +38,7 @@ class AppSettings {
     this.examRemindEnabled = true,
     this.remindMinutes = 10,
     this.examRemindMinutes = 30,
+    this.sectionTimes = kDefaultSectionTimes,
     this.backgroundStyle = 'ink',
     this.backgroundSeed = 0xFFF7F9FA,
     this.backgroundImage = '',
@@ -54,6 +58,7 @@ class AppSettings {
     bool? examRemindEnabled,
     int? remindMinutes,
     int? examRemindMinutes,
+    List<SectionTime>? sectionTimes,
     String? backgroundStyle,
     int? backgroundSeed,
     String? backgroundImage,
@@ -72,6 +77,7 @@ class AppSettings {
         examRemindEnabled: examRemindEnabled ?? this.examRemindEnabled,
         remindMinutes: remindMinutes ?? this.remindMinutes,
         examRemindMinutes: examRemindMinutes ?? this.examRemindMinutes,
+        sectionTimes: sectionTimes ?? this.sectionTimes,
         backgroundStyle: backgroundStyle ?? this.backgroundStyle,
         backgroundSeed: backgroundSeed ?? this.backgroundSeed,
         backgroundImage: backgroundImage ?? this.backgroundImage,
@@ -90,6 +96,7 @@ class SettingsController extends Notifier<AppSettings> {
   static const _kExamOn = 'settings_exam_on';
   static const _kRemindMin = 'settings_remind_min';
   static const _kExamMin = 'settings_exam_remind_min';
+  static const _kSectionTimes = 'settings_section_times';
   static const _kBgStyle = 'settings_bg_style';
   static const _kBgSeed = 'settings_bg_seed';
   static const _kBgImage = 'settings_bg_image';
@@ -121,6 +128,7 @@ class SettingsController extends Notifier<AppSettings> {
     await p.setBool(_kExamOn, s.examRemindEnabled);
     await p.setInt(_kRemindMin, s.remindMinutes);
     await p.setInt(_kExamMin, s.examRemindMinutes);
+    await p.setString(_kSectionTimes, SectionTimes.encode(s.sectionTimes));
     await p.setString(_kBgStyle, s.backgroundStyle);
     await p.setInt(_kBgSeed, s.backgroundSeed);
     await p.setString(_kBgImage, s.backgroundImage);
@@ -136,6 +144,8 @@ class SettingsController extends Notifier<AppSettings> {
         ? null
         : DateTime.tryParse(sem);
     TermUtils.semesterStartOverride = semesterStart;
+    final sectionTimes = SectionTimes.decode(p.getString(_kSectionTimes));
+    SectionTimes.apply(sectionTimes);
     final s = AppSettings(
       themeMode: switch (mode) {
         'light' => ThemeMode.light,
@@ -151,6 +161,7 @@ class SettingsController extends Notifier<AppSettings> {
       examRemindEnabled: p.getBool(_kExamOn) ?? true,
       remindMinutes: p.getInt(_kRemindMin) ?? 10,
       examRemindMinutes: p.getInt(_kExamMin) ?? 30,
+      sectionTimes: sectionTimes,
       backgroundStyle: p.getString(_kBgStyle) ?? 'ink',
       backgroundSeed: p.getInt(_kBgSeed) ?? 0xFFF7F9FA,
       // 旧版本可能存过在线链接，现已只支持本地图片，直接丢弃。
@@ -224,6 +235,18 @@ class SettingsController extends Notifier<AppSettings> {
     AppLog.d('提醒', '考试提前 $m 分钟');
     await _persist(state);
     await LessonNotifier.reschedule();
+  }
+
+  /// 用户自定义各节上课 / 下课时间
+  Future<void> setSectionTimes(List<SectionTime> times) async {
+    final list = [...times]..sort((a, b) => a.section.compareTo(b.section));
+    SectionTimes.apply(list);
+    state = state.copyWith(sectionTimes: List.unmodifiable(list));
+    AppLog.d('设置', '课程时间已更新');
+    await _persist(state);
+    // 上课提醒按新时间重排，桌面小组件立即重绘
+    await LessonNotifier.reschedule();
+    await HomeWidgetSync.refresh();
   }
 
   /// 自定义背景（风格 / 纯色 / 图片 / 模糊 / 暗化）

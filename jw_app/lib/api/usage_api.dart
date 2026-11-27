@@ -269,22 +269,6 @@ class UsageTracker {
     return t;
   }
 
-  /// 带会话访问云端接口（自动拼接当前入口），供情侣课表等扩展功能使用。
-  static Future<Response<dynamic>> apiRequest(
-    String method,
-    String path, {
-    required String xh,
-    Map<String, dynamic>? query,
-    Object? data,
-  }) =>
-      _authed(
-        method,
-        '$_backendUrl$path',
-        xh: xh,
-        query: query,
-        data: data,
-      );
-
   /// 主动作废会话（隧道握手 401 时调用，下次会重新认证）。
   static void invalidateSession() => _clearSession();
 

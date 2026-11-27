@@ -30,7 +30,7 @@
 | 学业 | `lib/ui/academic/academic_page.dart` | 修读计划分类、修读状态（已修/在读/未修）、学分进度；入口进排名页 |
 | 绩点排名 | `lib/ui/rank/rank_page.dart` | 学年学期区间、成绩性质、统计范围筛选与查询 |
 | 空教室 | `lib/ui/profile/favorite_rooms_page.dart` | 校区/楼号/类别筛选，周次/星期/节次多选，常用教室收藏 |
-| 情侣课表 | `lib/ui/couple/couple_page.dart` | 6 位配对码一对一绑定，我/TA/合看三视图、共同空闲；仅同步课名/时间/地点/周次 |
+| 情侣课表 | `lib/ui/couple/couple_page.dart` | 局域网 6 位配对码一对一绑定，我/TA/合看三视图、共同空闲；仅同步课名/时间/地点/周次 |
 | 通识拓展学分 | `lib/ui/profile/ge_credit_page.dart` | 按通识子类汇总已修学分，最低要求可本地调整 |
 | 个人信息 | `lib/ui/profile/profile_page.dart` | 学号/姓名/院系/专业/年级/班级，退出登录 |
 | 桌面小组件 | `android/.../ScheduleWidgetBase.kt` 等 | 「今日课表」「课表 + 考试」两种组件 |
@@ -494,7 +494,16 @@ gh release upload "v1.0.2+<构建号>" "<新APK路径>" --repo QingYu327/HaiPan 
 - 新增业务接口时：在 `lib/api/jw_apis.dart` 建 Api 类 + Provider，在 `data_providers.dart` 建缓存优先 Provider，页面只 watch；
 - 修改后必须 `flutter analyze` 通过。
 
-### 9.3 修改记录（Batch）
+### 9.3 交互与设计规范
+
+新增页面与功能必须复用现有交互与组件，不另起一套：
+
+- 刷新：列表页统一使用下拉手势（`InkRefresh`），不再在标题栏额外放刷新按钮；
+- 提示：操作结果统一走应用内灵动岛（`showInkToast` / `showInkNotice`），不使用页面内小字错误条；
+- 组件：页面骨架、卡片、分区标题、设置项、弹窗、图标与设计令牌统一复用 `lib/ui/widgets` 与 `lib/theme`；
+- 实现前先对照同类页面（课表、成绩、考试、学业、空教室、情侣课表）的交互与反馈；确需新交互时，先沉淀为公共组件再使用。
+
+### 9.4 修改记录（Batch）
 
 - 位置：`docs/modification_log.md`，**最新在最上方**；
 - 每条包含：日期 + Batch 号 + 主题（构建号）→ 范围与文件 → 关键决策与原因 → 验证（analyze/test/构建号/真机）→ 部署 → 遗留问题；

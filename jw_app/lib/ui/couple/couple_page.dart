@@ -12,6 +12,7 @@ import '../../providers/session_provider.dart';
 import '../../theme/ink_tokens.dart';
 import '../../util/app_log.dart';
 import '../widgets/app_icons.dart';
+import '../widgets/common.dart';
 import '../widgets/ink_dialog.dart';
 import '../widgets/ink_notice.dart';
 import '../widgets/ink_page.dart';
@@ -27,12 +28,11 @@ class CouplePage extends ConsumerStatefulWidget {
 class _CouplePageState extends ConsumerState<CouplePage> {
   static const _nickKey = 'couple.nickname';
   static const _betaKey = 'couple.beta_closed';
-  static const _syncPrefix = 'couple.last_sync.';
+
 
   final _codeCtrl = TextEditingController();
   bool _loading = true;
   bool _busy = false;
-  String? _error;
   CoupleStatus? _status;
   CouplePartner _partner = const CouplePartner();
   List<CoupleCourse> _mine = const [];
@@ -42,6 +42,7 @@ class _CouplePageState extends ConsumerState<CouplePage> {
   int _day = todayWeekday();
   int _view = 0; // 0 我 / 1 TA / 2 合看
   Timer? _codeTimer;
+  Timer? _pairPoll;
   int _codeLeft = 0;
   bool _betaClosed = false;
 
@@ -57,6 +58,8 @@ class _CouplePageState extends ConsumerState<CouplePage> {
   @override
   void dispose() {
     _codeTimer?.cancel();
+    _pairPoll?.cancel();
+    CoupleApi.stopAll();
     _codeCtrl.dispose();
     super.dispose();
   }
@@ -83,12 +86,12 @@ class _CouplePageState extends ConsumerState<CouplePage> {
 
   String get _xh => ref.read(sessionProvider).student.xh.trim();
 
-  Future<void> _refresh({bool forceSync = false}) async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+  Future<bool> _refresh({
+    bool forceSync = false,
+    bool fromPull = false,
+  }) async {
+    if (_busy) return false;
+    setState(() => _busy = true);
     try {
       if (_xh.isEmpty) throw const CoupleException('no_login', '请先登录后再使用情侣课表');
       final status = await CoupleApi.status(_xh);
@@ -97,42 +100,47 @@ class _CouplePageState extends ConsumerState<CouplePage> {
       if (status.paired) {
         final timetable = await ref.read(timetableProvider.future);
         mine = coupleCoursesOf(timetable.courses);
-        final p = await SharedPreferences.getInstance();
-        final last = p.getInt('$_syncPrefix$_xh') ?? 0;
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (forceSync || now - last > 10 * 60 * 1000) {
+        await CoupleApi.setMyCourses(mine);
+        await CoupleApi.startSyncListener();
+        if (forceSync) {
           await CoupleApi.sync(_xh, mine);
-          await p.setInt('$_syncPrefix$_xh', now);
           AppLog.d('情侣课表', '已同步我的课表 ${mine.length} 门');
         }
         partner = await CoupleApi.partner(_xh);
       } else {
+        await CoupleApi.stopSyncListener();
         mine = const [];
         partner = const CouplePartner();
       }
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _status = status;
         _mine = mine;
         _partner = partner;
         _loading = false;
       });
+      return true;
     } on CoupleException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
+      if (!mounted) return false;
+      setState(() => _loading = false);
+      if (fromPull) rethrow;
+      showInkToast(context, e.message, error: true);
+      return false;
     } catch (e) {
       AppLog.e('情侣课表', '刷新失败：$e');
-      if (!mounted) return;
-      setState(() {
-        _error = '连接云端失败，请检查网络后重试';
-        _loading = false;
-      });
+      if (!mounted) return false;
+      setState(() => _loading = false);
+      if (fromPull) rethrow;
+      showInkToast(context, '局域网操作失败，请检查双方网络后重试', error: true);
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _syncNow() async {
+    final ok = await _refresh(forceSync: true);
+    if (ok && mounted) showInkToast(context, '课表已同步');
   }
 
   Future<void> _createCode() async {
@@ -143,22 +151,44 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     }
     setState(() => _busy = true);
     try {
-      final code = await CoupleApi.createCode(_xh);
+      final timetable = await ref.read(timetableProvider.future);
+      final mine = coupleCoursesOf(timetable.courses);
+      final code = await CoupleApi.createCode(_xh, mine);
       if (!mounted) return;
       setState(() {
         _code = code;
         _codeLeft = 600;
       });
       _startCodeTimer();
+      _startPairPoll();
       await _showCodeDialog(code);
     } on CoupleException catch (e) {
       if (mounted) showInkToast(context, e.message, error: true);
     } catch (e) {
-      AppLog.e('情侣课表', '生成配对码失败：$e');
-      if (mounted) showInkToast(context, '生成失败，请检查网络后重试', error: true);
+      AppLog.e('情侣课表', '发起局域网配对失败：$e');
+      if (mounted) showInkToast(context, '发起失败，请检查网络后重试', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _startPairPoll() {
+    _pairPoll?.cancel();
+    _pairPoll = Timer.periodic(const Duration(seconds: 2), (t) async {
+      if (!mounted) return t.cancel();
+      final s = await CoupleApi.status(_xh);
+      if (!s.paired) return;
+      t.cancel();
+      _codeTimer?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _code = null;
+        _codeLeft = 0;
+      });
+      showInkToast(context, '配对成功');
+      setState(() => _busy = false);
+      await _refresh();
+    });
   }
 
   void _startCodeTimer() {
@@ -167,6 +197,8 @@ class _CouplePageState extends ConsumerState<CouplePage> {
       if (!mounted) return t.cancel();
       if (_codeLeft <= 1) {
         t.cancel();
+        _pairPoll?.cancel();
+        CoupleApi.cancelPairing();
         setState(() {
           _code = null;
           _codeLeft = 0;
@@ -195,8 +227,12 @@ class _CouplePageState extends ConsumerState<CouplePage> {
               ),
             ),
             const SizedBox(height: InkSpacing.s),
-            Text('10 分钟内有效，请让对方在情侣课表页输入',
-                textAlign: TextAlign.center, style: context.tsSecondary),
+            Text(
+              '10 分钟内有效。请让对方连接同一 Wi-Fi 或热点，'
+              '在情侣课表页输入配对码。',
+              textAlign: TextAlign.center,
+              style: context.tsSecondary,
+            ),
           ],
         ),
         actions: [
@@ -230,16 +266,21 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await CoupleApi.bind(_xh, code);
+      final timetable = await ref.read(timetableProvider.future);
+      final mine = coupleCoursesOf(timetable.courses);
+      await CoupleApi.bind(_xh, code, mine);
       _codeCtrl.clear();
       if (!mounted) return;
       showInkToast(context, '配对成功');
-      await _refresh(forceSync: true);
+      // 先结束忙碌态，否则 _refresh 会被 _busy 守卫直接跳过，
+      // 导致绑定成功后页面仍停留在未配对状态。
+      setState(() => _busy = false);
+      await _refresh();
     } on CoupleException catch (e) {
       if (mounted) showInkToast(context, e.message, error: true);
     } catch (e) {
-      AppLog.e('情侣课表', '绑定失败：$e');
-      if (mounted) showInkToast(context, '绑定失败，请检查网络后重试', error: true);
+      AppLog.e('情侣课表', '加入局域网配对失败：$e');
+      if (mounted) showInkToast(context, '加入失败，请确认双方在同一网络', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -249,7 +290,7 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     final ok = await showInkDialog(
       context,
       title: '解除配对',
-      message: '解除后双方都无法再查看对方课表，需要重新生成配对码绑定。',
+      message: '解除后本机将清除对方课表，需要重新配对才能继续同步。',
       confirmText: '解除',
       danger: true,
     );
@@ -313,49 +354,51 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     return InkPageScaffold(
       showBack: true,
       title: '情侣课表',
-      actions: [
-        IconButton(
-          tooltip: '刷新',
-          onPressed: _loading || _busy ? null : () => _refresh(forceSync: true),
-          icon: const Icon(AppIcons.refresh, size: 20),
-        ),
-        const SizedBox(width: InkSpacing.xs),
-      ],
-      children: [
-        if (!_betaClosed) ...[
-          _betaBanner(context),
-          const SizedBox(height: InkSpacing.s),
-        ],
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.all(InkSpacing.xxl),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_status?.paired != true) ...[
-          _introCard(context),
-          const InkSectionHeader(title: '输入对方的配对码'),
-          _bindCard(context),
-          const InkSectionHeader(title: '说明'),
-          _privacyCard(context),
-        ] else ...[
-          _pairCard(context),
-          const SizedBox(height: InkSpacing.m),
-          _viewCard(context),
-          if (_status!.partnerStale)
-            _staleBanner(context)
-          else if (_view == 2)
-            _freeCard(context),
-          const SizedBox(height: InkSpacing.m),
-          _courseSection(context),
-        ],
-        if (_error != null) ...[
-          const SizedBox(height: InkSpacing.m),
-          InkCard(
-            child: Text(_error!, style: context.tsSecondary),
-          ),
-        ],
-        const SizedBox(height: InkSpacing.l),
-      ],
+      body: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(InkSpacing.xxl),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : InkRefresh(
+              onRefresh: () async {
+                await _refresh(forceSync: true, fromPull: true);
+              },
+              successMessage: '情侣课表已刷新',
+              child: ListView(
+                primary: false,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  0,
+                  0,
+                  0,
+                  inkPagePadding(context).bottom,
+                ),
+                children: [
+                  if (!_betaClosed) ...[
+                    _betaBanner(context),
+                    const SizedBox(height: InkSpacing.s),
+                  ],
+                  if (_status?.paired != true) ...[
+                    _introCard(context),
+                    const InkSectionHeader(title: '输入对方的配对码'),
+                    _bindCard(context),
+                    const InkSectionHeader(title: '说明'),
+                    _privacyCard(context),
+                  ] else ...[
+                    _pairCard(context),
+                    const SizedBox(height: InkSpacing.m),
+                    _viewCard(context),
+                    if (_status!.partnerStale)
+                      _staleBanner(context)
+                    else if (_view == 2)
+                      _freeCard(context),
+                    const SizedBox(height: InkSpacing.m),
+                    _courseSection(context),
+                  ],
+                  const SizedBox(height: InkSpacing.l),
+                ],
+              ),
+            ),
     );
   }
 
@@ -408,8 +451,9 @@ class _CouplePageState extends ConsumerState<CouplePage> {
           ),
           const SizedBox(height: InkSpacing.m),
           Text(
-            '生成 6 位配对码发给对方，对方输入后即完成一对一绑定。'
-            '只同步课名、时间、地点与周次，不上传学号、姓名、教师或成绩。',
+            '双方连接同一 Wi-Fi 或热点后，生成 6 位配对码并让对方输入，'
+            '即可完成一对一绑定。只同步课名、时间、地点与周次，'
+            '不传学号、姓名、教师或成绩。',
             style: context.tsSecondary.copyWith(height: 1.6),
           ),
           const SizedBox(height: InkSpacing.l),
@@ -484,9 +528,9 @@ class _CouplePageState extends ConsumerState<CouplePage> {
   Widget _privacyCard(BuildContext context) {
     return InkCard(
       child: Text(
-        '配对关系是一对一的，任一方解除都会同时失效。'
-        '对方仅能查看你上传的课表快照，看不到学号、姓名、教师与成绩。'
-        '连续 180 天没有同步会自动解除配对。',
+        '配对关系是一对一的，解除后需要重新配对才能继续同步。'
+        '配对与同步均在本地局域网内完成，不上传到服务器。'
+        '对方仅能查看你共享的课表快照，看不到学号、姓名、教师与成绩。',
         style: context.tsSecondary.copyWith(height: 1.65),
       ),
     );
@@ -523,7 +567,7 @@ class _CouplePageState extends ConsumerState<CouplePage> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _refresh(forceSync: true),
+                  onPressed: _busy ? null : _syncNow,
                   icon: const Icon(AppIcons.refresh, size: 17),
                   label: const Text('同步课表'),
                 ),

@@ -53,3 +53,7 @@ node_modules/
 
 # 公开展示仓库的组装目录（独立 git，勿随主仓库提交）
 /dist/
+
+# 本地测试截图 / 临时分享产物
+/.screenshots/
+/.trae-html-share-packages/

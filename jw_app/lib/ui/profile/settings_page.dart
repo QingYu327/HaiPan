@@ -17,6 +17,7 @@ import '../widgets/ink_notice.dart';
 import '../widgets/ink_page.dart';
 import '../widgets/ink_panel.dart';
 import '../widgets/permission_prompt.dart';
+import 'section_times_page.dart';
 import 'storage_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -139,7 +140,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const InkSectionHeader(title: '课表'),
         InkCard(
           padding: EdgeInsets.zero,
-          child: _semesterStartRow(context, ref),
+          child: Column(
+            children: [
+              _semesterStartRow(context, ref),
+              InkSettingTile(
+                title: '课程时间',
+                subtitle: '各节上课 / 下课时间',
+                icon: AppIcons.time,
+                iconTone: InkTone.info,
+                trailing: Text(
+                  '编辑',
+                  style: context.tsBodyStrong.copyWith(
+                    color: context.scheme.primary,
+                  ),
+                ),
+                onTap: () => Navigator.push(
+                  context,
+                  InkPageRoute(builder: (_) => const SectionTimesPage()),
+                ),
+                showDivider: false,
+              ),
+            ],
+          ),
         ),
         const InkSectionHeader(title: '存储'),
         const _StorageSection(),
@@ -174,7 +196,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         style: context.tsBodyStrong.copyWith(color: context.scheme.primary),
       ),
       onTap: () => _pickSemesterStart(context, ref, start),
-      showDivider: false,
+      showDivider: true,
     );
   }
 

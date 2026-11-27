@@ -11,6 +11,7 @@ import '../../theme/ink_tokens.dart';
 import '../../util/app_log.dart';
 import '../../util/lesson_notifier.dart';
 import '../../util/notify_target.dart';
+import '../../util/section_times.dart';
 import '../../util/term_utils.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
@@ -18,25 +19,16 @@ import '../widgets/ink_page.dart';
 
 const _dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
 
-/// 学校现行作息（按课表原文逐节固定，不做推算）：
-/// 1 08:10~08:55 / 2 09:00~09:45 / 3 10:15~11:00 / 4 11:05~11:50
-/// 5 14:30~15:15 / 6 15:20~16:05 / 7 16:30~17:15 / 8 17:20~18:05
-/// 9 19:30~20:15 / 10 20:25~21:10
-const _blockTimes = <int, (String, String)>{
-  1: ('08:10', '08:55'),
-  2: ('09:00', '09:45'),
-  3: ('10:15', '11:00'),
-  4: ('11:05', '11:50'),
-  5: ('14:30', '15:15'),
-  6: ('15:20', '16:05'),
-  7: ('16:30', '17:15'),
-  8: ('17:20', '18:05'),
-  9: ('19:30', '20:15'),
-  10: ('20:25', '21:10'),
-};
+/// 节次时间来自用户设置（默认按教务处课表原文逐节设置）。
+String? _sectionStartTime(int section) {
+  final t = SectionTimes.of(section);
+  return (t != null && t.isSet) ? t.startLabel : null;
+}
 
-String? _sectionStartTime(int section) => _blockTimes[section]?.$1;
-String? _sectionEndTime(int section) => _blockTimes[section]?.$2;
+String? _sectionEndTime(int section) {
+  final t = SectionTimes.of(section);
+  return (t != null && t.isSet) ? t.endLabel : null;
+}
 
 /// 课程起止时间文本，如 "08:10-09:45"（按所在大节区间）
 String _courseTime(CourseEntry c) {
@@ -495,8 +487,8 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
                     for (var s = 1; s <= t.maxSection; s++)
                       SizedBox(
                         height: rowH,
-                        // 作息只到 10 节；超出的行不显示时间标签
-                        child: _blockTimes[s] == null
+                        // 未设置作息的节次不显示时间标签
+                        child: _sectionStartTime(s) == null
                             ? null
                             : Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -511,14 +503,14 @@ class _TimetablePageState extends ConsumerState<TimetablePage> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    _blockTimes[s]!.$1,
+                                    _sectionStartTime(s)!,
                                     style: InkTextStyles.micro.copyWith(
                                       fontSize: 10.5,
                                       color: context.ink.secondaryLabel,
                                     ),
                                   ),
                                   Text(
-                                    _blockTimes[s]!.$2,
+                                    _sectionEndTime(s)!,
                                     style: InkTextStyles.micro.copyWith(
                                       fontSize: 10.5,
                                       color: context.ink.secondaryLabel,
@@ -849,15 +841,20 @@ class _TodayOverviewState extends ConsumerState<_TodayOverview> {
                 children: [
                   Icon(AppIcons.today, size: 18, color: cs.primary),
                   const SizedBox(width: 6),
-                  Text(
-                    '${now.month}月${now.day}日 周${_dayNames[now.weekday]} · 第$week周',
-                    style: InkTextStyles.caption.copyWith(
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      '${now.year}年${now.month}月${now.day}日 周${_dayNames[now.weekday]} · 第$week周',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: InkTextStyles.caption.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  if (today.isNotEmpty)
+                  if (today.isNotEmpty) ...[
+                    const SizedBox(width: 8),
                     Text('今日 ${today.length} 节', style: context.tsSecondary),
+                  ],
                   const SizedBox(width: 4),
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,

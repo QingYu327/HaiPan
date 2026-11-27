@@ -1,5 +1,6 @@
 package cn.gdou.xiuhong
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -8,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
@@ -102,44 +104,69 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
         )
         views.setTextViewTextSize(R.id.tv_title, SP, m.title)
         views.setTextViewTextSize(R.id.tv_meta, SP, m.meta)
+        views.setTextViewTextSize(R.id.tv_date, SP, m.meta)
 
         val payload = loadPayload(context)
+        val times = loadSectionTimes(context)
         val cal = Calendar.getInstance()
         val weekday = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1 // 周一=1 … 周日=7
         val dayNames = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
         val weekLabel = payload?.let { weekOf(it) } ?: 0
-        val date = "${cal.get(Calendar.MONTH) + 1}/${cal.get(Calendar.DAY_OF_MONTH)}"
+        val date = "${cal.get(Calendar.YEAR)}年${cal.get(Calendar.MONTH) + 1}月" +
+            "${cal.get(Calendar.DAY_OF_MONTH)}日"
         views.setTextViewText(R.id.tv_title, "今日课表")
+        views.setTextViewText(R.id.tv_meta, "")
         views.setTextViewText(
-            R.id.tv_meta,
-            if (weekLabel > 0) "第${weekLabel}周 · $date ${dayNames[weekday - 1]}"
-            else "$date ${dayNames[weekday - 1]}"
+            R.id.tv_date,
+            "$date ${dayNames[weekday - 1]}" +
+                (if (weekLabel > 0) " · 第${weekLabel}周" else "")
         )
+        views.setTextViewTextSize(R.id.chrono_countdown, SP, m.meta)
 
         // 明天的课与之后要考的试，用于填充空余高度
-        val courses = payload?.let { coursesFor(it, weekday, weekLabel) } ?: emptyList()
+        val allCourses = payload?.let { coursesFor(it, weekday, weekLabel) } ?: emptyList()
+        val nowMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        // 已到下课时间的课程自动移除
+        val courses = allCourses.filter { c ->
+            val end = minutesOf(times[c.optInt("e")]?.second)
+            end == null || end > nowMin
+        }
         val tomorrowWeekday = if (weekday == 7) 1 else weekday + 1
         val tomorrowWeek = if (weekday == 7) weekLabel + 1 else weekLabel
         val tomorrow = payload?.let { coursesFor(it, tomorrowWeekday, tomorrowWeek) } ?: emptyList()
         val exams = payload?.let { upcomingExams(it) } ?: emptyList()
 
+        // 正在上的课：用 Chronometer 做实时下课倒计时（无需每分钟刷新）
+        val ongoing = courses.firstOrNull { c ->
+            val s = minutesOf(times[c.optInt("s")]?.first) ?: return@firstOrNull false
+            val e = minutesOf(times[c.optInt("e")]?.second) ?: return@firstOrNull false
+            nowMin >= s && nowMin < e
+        }
+        bindCountdown(views, cal, times, ongoing, nowMin)
+
+
         // 高度预算（dp 近似）：先按一行考试估算可见课程行数
-        val headerH = m.title * 1.35f + 6f
+        // 头部固定为「标题 + 周次」与「日期」两行；考试区预留主考试与面板内边距
+        val headerH = m.title * 1.35f + m.meta * 1.35f + 10f
         val rowH = m.name * 1.22f + m.room * 1.18f + m.gap * 2f + 1f
         val moreH = m.meta * 1.45f + 2f
         val extraH = m.meta * 1.45f + 4f
         val examH = if (withExam) {
-            m.examLabel * 1.3f + m.exam * 1.4f + m.examSub * 1.25f + 14f
+            m.examLabel * 1.3f + m.exam * 1.4f + m.examSub * 1.25f + 22f
         } else 0f
         val avail = heightDp - m.padV * 2f - headerH - examH - 4f
 
-        var rows = (avail / rowH).toInt().coerceIn(1, MAX_ROWS)
+        // 每两门课之间额外占 1dp 分隔线
+        val rowBlock = rowH + 1f
+        var rows = (avail / rowBlock).toInt().coerceIn(1, MAX_ROWS)
         if (courses.isNotEmpty() && courses.size > rows) {
-            rows = ((avail - moreH) / rowH).toInt().coerceIn(1, MAX_ROWS)
+            rows = ((avail - moreH) / rowBlock).toInt().coerceIn(1, MAX_ROWS)
         }
         val visible = courses.size.coerceAtMost(rows)
         val overflow = courses.size > visible
-        var rest = avail - visible * rowH - if (overflow) moreH else 0f
+        var rest = avail - visible * rowH -
+            (visible - 1).coerceAtLeast(0) -
+            (if (overflow) moreH else 0f)
 
         // 空余区域依次补充：明天第一门课 → 下一场考试
         val showTomorrow = rest >= extraH
@@ -169,26 +196,53 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
             views.setTextViewTextSize(ROOM_IDS[i], SP, m.room)
             views.setTextViewText(NAME_IDS[i], c.optString("n"))
 
-            val time = startTime(c.optInt("s"))
+            val start = times[c.optInt("s")]?.first ?: ""
+            val end = times[c.optInt("e")]?.second ?: ""
+            val range = when {
+                start.isNotEmpty() && end.isNotEmpty() -> "$start-$end"
+                start.isNotEmpty() -> start
+                else -> end
+            }
             val room = c.optString("r")
             if (m.showTime) {
-                views.setViewVisibility(TIME_IDS[i], View.VISIBLE)
-                views.setTextViewText(TIME_IDS[i], time)
+                // 时间栏上下两行显示起止时间，如 08:10 / 08:55
+                val column = when {
+                    start.isNotEmpty() && end.isNotEmpty() -> "$start\n$end"
+                    else -> range
+                }
+                views.setViewVisibility(
+                    TIME_IDS[i], if (column.isEmpty()) View.GONE else View.VISIBLE
+                )
+                views.setTextViewText(TIME_IDS[i], column)
                 views.setTextViewText(ROOM_IDS[i], room)
+                views.setViewVisibility(
+                    ROOM_IDS[i], if (room.isEmpty()) View.GONE else View.VISIBLE
+                )
             } else {
-                // 窄组件把时间并入地点一行，把整行宽度留给课程名
+                // 窄组件把时间范围并入地点一行，把整行宽度留给课程名
                 views.setViewVisibility(TIME_IDS[i], View.GONE)
-                views.setTextViewText(
-                    ROOM_IDS[i],
-                    if (room.isEmpty()) time else "$time · $room"
+                val line = listOf(range, room)
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" · ")
+                views.setTextViewText(ROOM_IDS[i], line)
+                views.setViewVisibility(
+                    ROOM_IDS[i], if (line.isEmpty()) View.GONE else View.VISIBLE
                 )
             }
+        }
+
+        // 只在前两门相邻课程之间画细线
+        for (i in 0 until MAX_ROWS - 1) {
             views.setViewVisibility(
-                ROOM_IDS[i], if (room.isEmpty() && m.showTime) View.GONE else View.VISIBLE
+                DIVIDER_IDS[i], if (i < visible - 1) View.VISIBLE else View.GONE
             )
         }
 
         views.setTextViewTextSize(R.id.tv_empty, SP, m.name)
+        views.setTextViewText(
+            R.id.tv_empty,
+            if (allCourses.isNotEmpty() && courses.isEmpty()) "今日课程已结束" else "今日无课"
+        )
         views.setViewVisibility(
             R.id.tv_empty,
             if (courses.isEmpty()) View.VISIBLE else View.GONE
@@ -211,13 +265,16 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
             } else {
                 val first = tomorrow.first()
                 val extra = if (tomorrow.size > 1) " 等${tomorrow.size}门" else ""
-                "明天 ${startTime(first.optInt("s"))} ${first.optString("n")}$extra"
+                val start = times[first.optInt("s")]?.first ?: ""
+                val prefix = if (start.isEmpty()) "" else "$start "
+                "明天 $prefix${first.optString("n")}$extra"
             }
             views.setTextViewText(R.id.tv_tomorrow, text)
             views.setViewVisibility(R.id.tv_tomorrow, View.VISIBLE)
         } else {
             views.setViewVisibility(R.id.tv_tomorrow, View.GONE)
         }
+        scheduleNextRefresh(context, times, allCourses)
         return views
     }
 
@@ -226,6 +283,7 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
         if (exam == null) {
             views.setTextViewText(R.id.tv_exam, "暂无考试安排")
             views.setTextViewText(R.id.tv_exam_sub, "")
+            views.setTextViewText(R.id.tv_exam2, "")
             views.setViewVisibility(R.id.tv_exam2, View.GONE)
             return
         }
@@ -245,12 +303,14 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
         val place = exam.optString("p")
         views.setTextViewText(
             R.id.tv_exam_sub,
-            "${c.get(Calendar.MONTH) + 1}月${c.get(Calendar.DAY_OF_MONTH)}日 $hm" +
+            "${c.get(Calendar.YEAR)}年${c.get(Calendar.MONTH) + 1}月" +
+                "${c.get(Calendar.DAY_OF_MONTH)}日 $hm" +
                 if (place.isEmpty()) "" else " · $place"
         )
 
         val second = if (showSecond) exams.getOrNull(1) else null
         if (second == null) {
+            views.setTextViewText(R.id.tv_exam2, "")
             views.setViewVisibility(R.id.tv_exam2, View.GONE)
         } else {
             val c2 = Calendar.getInstance().apply { timeInMillis = second.optLong("at") }
@@ -260,8 +320,8 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
             )
             views.setTextViewText(
                 R.id.tv_exam2,
-                "下一场 ${c2.get(Calendar.MONTH) + 1}月${c2.get(Calendar.DAY_OF_MONTH)}日 " +
-                    "$hm2 ${second.optString("n")}"
+                "下一场 ${c2.get(Calendar.YEAR)}年${c2.get(Calendar.MONTH) + 1}月" +
+                    "${c2.get(Calendar.DAY_OF_MONTH)}日 $hm2 ${second.optString("n")}"
             )
             views.setViewVisibility(R.id.tv_exam2, View.VISIBLE)
         }
@@ -405,14 +465,169 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
         return ((exam.timeInMillis - today.timeInMillis) / 86400000L).toInt()
     }
 
-    private fun startTime(section: Int): String = when (section) {
-        1, 2 -> "08:10"
-        3, 4 -> "10:15"
-        5, 6 -> "14:30"
-        7, 8 -> "16:30"
-        9, 10 -> "19:30"
-        11, 12 -> "21:00"
-        else -> ""
+    /** 读取 Flutter 设置中的节次作息；未配置时回退到默认表。 */
+    private fun loadSectionTimes(context: Context): Map<Int, Pair<String, String>> {
+        val out = defaultSectionTimes().toMutableMap()
+        val sp = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val raw = sp.getString("flutter.settings_section_times", null) ?: return out
+        for (token in raw.split(';')) {
+            val parts = token.split('=', limit = 2)
+            if (parts.size != 2) continue
+            val section = parts[0].trim().toIntOrNull() ?: continue
+            if (section !in 1..20) continue
+            val value = parts[1].trim()
+            if (value.isEmpty()) {
+                out.remove(section)
+                continue
+            }
+            val range = value.split('-')
+            if (range.size != 2) continue
+            val start = normalizeHm(range[0])
+            val end = normalizeHm(range[1])
+            if (start != null && end != null && end > start) {
+                out[section] = start to end
+            }
+        }
+        return out
+    }
+
+    private fun defaultSectionTimes(): Map<Int, Pair<String, String>> = mapOf(
+        1 to ("08:10" to "08:55"),
+        2 to ("09:00" to "09:45"),
+        3 to ("10:15" to "11:00"),
+        4 to ("11:05" to "11:50"),
+        5 to ("14:30" to "15:15"),
+        6 to ("15:20" to "16:05"),
+        7 to ("16:30" to "17:15"),
+        8 to ("17:20" to "18:05"),
+        9 to ("19:30" to "20:15"),
+        10 to ("20:25" to "21:10")
+    )
+
+    private fun normalizeHm(raw: String): String? {
+        val parts = raw.trim().split(':')
+        if (parts.size != 2) return null
+        val h = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].toIntOrNull() ?: return null
+        if (h !in 0..23 || m !in 0..59) return null
+        return String.format("%02d:%02d", h, m)
+    }
+
+    private fun minutesOf(hm: String?): Int? {
+        if (hm.isNullOrEmpty()) return null
+        val parts = hm.split(':')
+        val h = parts.getOrNull(0)?.toIntOrNull() ?: return null
+        val m = parts.getOrNull(1)?.toIntOrNull() ?: return null
+        return h * 60 + m
+    }
+
+    /** 正在上课时显示实时下课倒计时；低版本系统退化为静态分钟数。 */
+    private fun bindCountdown(
+        views: RemoteViews,
+        cal: Calendar,
+        times: Map<Int, Pair<String, String>>,
+        ongoing: JSONObject?,
+        nowMin: Int
+    ) {
+        val endMin = ongoing?.let { minutesOf(times[it.optInt("e")]?.second) }
+        val nowMs = nowMin * 60_000L +
+            cal.get(Calendar.SECOND) * 1_000L +
+            cal.get(Calendar.MILLISECOND)
+        val remainMs = if (endMin == null) 0L else endMin * 60_000L - nowMs
+        if (remainMs <= 0L) {
+            views.setViewVisibility(R.id.chrono_countdown, View.GONE)
+            views.setViewVisibility(R.id.tv_meta, View.VISIBLE)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            views.setChronometer(
+                R.id.chrono_countdown,
+                SystemClock.elapsedRealtime() + remainMs,
+                "距下课 %s",
+                true
+            )
+            views.setChronometerCountDown(R.id.chrono_countdown, true)
+            views.setViewVisibility(R.id.chrono_countdown, View.VISIBLE)
+            views.setViewVisibility(R.id.tv_meta, View.GONE)
+        } else {
+            val mins = ((remainMs + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
+            views.setViewVisibility(R.id.chrono_countdown, View.GONE)
+            views.setTextViewText(R.id.tv_meta, "距下课 $mins 分")
+            views.setViewVisibility(R.id.tv_meta, View.VISIBLE)
+        }
+    }
+
+    /** 在下一次上课 / 下课 / 零点时唤醒组件，及时移除已结束课程并刷新日期。 */
+    private fun scheduleNextRefresh(
+        context: Context,
+        times: Map<Int, Pair<String, String>>,
+        courses: List<JSONObject>
+    ) {
+        val nowCal = Calendar.getInstance()
+        val now = nowCal.timeInMillis
+        var next = Long.MAX_VALUE
+
+        fun consider(minutes: Int?) {
+            if (minutes == null) return
+            val c = Calendar.getInstance().apply {
+                timeInMillis = now
+                set(Calendar.HOUR_OF_DAY, minutes / 60)
+                set(Calendar.MINUTE, minutes % 60)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            if (c.timeInMillis > now + 1_000L) next = minOf(next, c.timeInMillis)
+        }
+
+        for (c in courses) {
+            consider(minutesOf(times[c.optInt("s")]?.first))
+            consider(minutesOf(times[c.optInt("e")]?.second))
+        }
+        val midnight = Calendar.getInstance().apply {
+            timeInMillis = now
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 1)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        if (midnight > now) next = minOf(next, midnight)
+        if (next == Long.MAX_VALUE) return
+
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val manager = AppWidgetManager.getInstance(context)
+        for ((cls, code) in arrayOf(
+            TodayWidgetProvider::class.java to 9101,
+            ScheduleOnlyWidgetProvider::class.java to 9102
+        )) {
+            if (manager.getAppWidgetIds(ComponentName(context, cls)).isEmpty()) continue
+            val intent = Intent(context, cls).apply { action = ACTION_REFRESH }
+            val pi = PendingIntent.getBroadcast(
+                context,
+                code,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            try {
+                val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                    am.canScheduleExactAlarms()
+                if (canExact) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        am.setExactAndAllowWhileIdle(AlarmManager.RTC, next, pi)
+                    } else {
+                        am.setExact(AlarmManager.RTC, next, pi)
+                    }
+                } else {
+                    am.set(AlarmManager.RTC, next, pi)
+                }
+            } catch (_: Exception) {
+                try {
+                    am.set(AlarmManager.RTC, next, pi)
+                } catch (_: Exception) {
+                    // 系统限制后台闹钟时交给 30 分钟周期刷新兜底
+                }
+            }
+        }
     }
 
     /** 一组排版参数（字号单位 sp，间距单位 dp） */
@@ -452,6 +667,10 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
         private val ROOM_IDS = intArrayOf(
             R.id.room1, R.id.room2, R.id.room3, R.id.room4,
             R.id.room5, R.id.room6, R.id.room7, R.id.room8
+        )
+        private val DIVIDER_IDS = intArrayOf(
+            R.id.divider1, R.id.divider2, R.id.divider3, R.id.divider4,
+            R.id.divider5, R.id.divider6, R.id.divider7
         )
 
         /** 由 Flutter 调用：数据更新后主动刷新所有小组件 */
