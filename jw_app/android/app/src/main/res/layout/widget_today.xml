@@ -146,7 +146,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider1"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -199,7 +199,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider2"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -252,7 +252,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider3"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -306,7 +306,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider4"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -360,7 +360,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider5"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -414,7 +414,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider6"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -468,7 +468,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
+            <TextView
                 android:id="@+id/divider7"
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
