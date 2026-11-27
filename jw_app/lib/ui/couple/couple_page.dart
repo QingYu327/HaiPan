@@ -34,22 +34,17 @@ class _CouplePageState extends ConsumerState<CouplePage> {
   bool _loading = true;
   bool _busy = false;
   CoupleStatus? _status;
-  CouplePartner _partner = const CouplePartner();
-  List<CoupleCourse> _mine = const [];
   String _nickname = 'TA';
   String? _code;
-  int _week = 1;
-  int _day = todayWeekday();
-  int _view = 0; // 0 我 / 1 TA / 2 合看
   Timer? _codeTimer;
   Timer? _pairPoll;
   int _codeLeft = 0;
   bool _betaClosed = false;
+  bool _codeDialogOpen = false; // 配对码弹窗是否仍在前台
 
   @override
   void initState() {
     super.initState();
-    _week = coupleCurrentWeek(ref.read(termProvider('timetable')));
     _loadNickname();
     _loadBetaDismissed();
     _refresh();
@@ -94,29 +89,24 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     setState(() => _busy = true);
     try {
       if (_xh.isEmpty) throw const CoupleException('no_login', '请先登录后再使用情侣课表');
-      final status = await CoupleApi.status(_xh);
-      var mine = _mine;
-      var partner = _partner;
+      var status = await CoupleApi.status(_xh);
       if (status.paired) {
         final timetable = await ref.read(timetableProvider.future);
-        mine = coupleCoursesOf(timetable.courses);
+        final mine = coupleCoursesOf(timetable.courses);
         await CoupleApi.setMyCourses(mine);
         await CoupleApi.startSyncListener();
         if (forceSync) {
           await CoupleApi.sync(_xh, mine);
           AppLog.d('情侣课表', '已同步我的课表 ${mine.length} 门');
+          // 同步会写入新的更新时刻，重读状态让页面上的时间戳立即刷新
+          status = await CoupleApi.status(_xh);
         }
-        partner = await CoupleApi.partner(_xh);
       } else {
         await CoupleApi.stopSyncListener();
-        mine = const [];
-        partner = const CouplePartner();
       }
       if (!mounted) return false;
       setState(() {
         _status = status;
-        _mine = mine;
-        _partner = partner;
         _loading = false;
       });
       return true;
@@ -185,6 +175,11 @@ class _CouplePageState extends ConsumerState<CouplePage> {
         _code = null;
         _codeLeft = 0;
       });
+      // 对方已完成配对：自动收起仍在展示的配对码弹窗
+      if (_codeDialogOpen && mounted) {
+        _codeDialogOpen = false;
+        Navigator.of(context).pop();
+      }
       showInkToast(context, '配对成功');
       setState(() => _busy = false);
       await _refresh();
@@ -210,47 +205,52 @@ class _CouplePageState extends ConsumerState<CouplePage> {
   }
 
   Future<void> _showCodeDialog(String code) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('配对码'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              code,
-              style: context.tabular.copyWith(
-                fontSize: 34,
-                letterSpacing: 6,
-                fontWeight: FontWeight.w700,
-                color: context.scheme.primary,
+    _codeDialogOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('配对码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                code,
+                style: context.tabular.copyWith(
+                  fontSize: 34,
+                  letterSpacing: 6,
+                  fontWeight: FontWeight.w700,
+                  color: context.scheme.primary,
+                ),
               ),
+              const SizedBox(height: InkSpacing.s),
+              Text(
+                '10 分钟内有效。请让对方连接同一 Wi-Fi 或热点，'
+                '在情侣课表页输入配对码。',
+                textAlign: TextAlign.center,
+                style: context.tsSecondary,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
             ),
-            const SizedBox(height: InkSpacing.s),
-            Text(
-              '10 分钟内有效。请让对方连接同一 Wi-Fi 或热点，'
-              '在情侣课表页输入配对码。',
-              textAlign: TextAlign.center,
-              style: context.tsSecondary,
+            FilledButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: code));
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) showInkToast(context, '配对码已复制');
+              },
+              child: const Text('复制'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: code));
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) showInkToast(context, '配对码已复制');
-            },
-            child: const Text('复制'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      _codeDialogOpen = false;
+    }
   }
 
   Future<void> _bind() async {
@@ -302,8 +302,6 @@ class _CouplePageState extends ConsumerState<CouplePage> {
       showInkToast(context, '已解除配对');
       setState(() {
         _status = const CoupleStatus(paired: false);
-        _partner = const CouplePartner();
-        _mine = const [];
         _code = null;
       });
     } on CoupleException catch (e) {
@@ -382,18 +380,11 @@ class _CouplePageState extends ConsumerState<CouplePage> {
                     _introCard(context),
                     const InkSectionHeader(title: '输入对方的配对码'),
                     _bindCard(context),
-                    const InkSectionHeader(title: '说明'),
-                    _privacyCard(context),
                   ] else ...[
                     _pairCard(context),
                     const SizedBox(height: InkSpacing.m),
-                    _viewCard(context),
-                    if (_status!.partnerStale)
-                      _staleBanner(context)
-                    else if (_view == 2)
-                      _freeCard(context),
-                    const SizedBox(height: InkSpacing.m),
-                    _courseSection(context),
+                    _homeHint(context),
+                    if (_status!.partnerStale) _staleNote(context),
                   ],
                   const SizedBox(height: InkSpacing.l),
                 ],
@@ -451,9 +442,7 @@ class _CouplePageState extends ConsumerState<CouplePage> {
           ),
           const SizedBox(height: InkSpacing.m),
           Text(
-            '双方连接同一 Wi-Fi 或热点后，生成 6 位配对码并让对方输入，'
-            '即可完成一对一绑定。只同步课名、时间、地点与周次，'
-            '不传学号、姓名、教师或成绩。',
+            '连接同一 Wi-Fi 或热点，生成 6 位配对码，让对方在情侣课表输入即可完成配对。',
             style: context.tsSecondary.copyWith(height: 1.6),
           ),
           const SizedBox(height: InkSpacing.l),
@@ -525,17 +514,6 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     );
   }
 
-  Widget _privacyCard(BuildContext context) {
-    return InkCard(
-      child: Text(
-        '配对关系是一对一的，解除后需要重新配对才能继续同步。'
-        '配对与同步均在本地局域网内完成，不上传到服务器。'
-        '对方仅能查看你共享的课表快照，看不到学号、姓名、教师与成绩。',
-        style: context.tsSecondary.copyWith(height: 1.65),
-      ),
-    );
-  }
-
   Widget _pairCard(BuildContext context) {
     final cs = context.scheme;
     return InkCard(
@@ -584,231 +562,36 @@ class _CouplePageState extends ConsumerState<CouplePage> {
     );
   }
 
-  Widget _staleBanner(BuildContext context) {
+  /// 配对上后的简短提示：课表已移到首页
+  Widget _homeHint(BuildContext context) {
+    return InkCard(
+      child: Row(
+        children: [
+          Icon(AppIcons.timetable, size: 20, color: context.scheme.primary),
+          const SizedBox(width: InkSpacing.s),
+          Expanded(
+            child: Text(
+              '课表已放到首页，可用「我 / TA / 合看」切换查看。',
+              style: context.tsSecondary.copyWith(height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _staleNote(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: InkSpacing.s),
       child: InkCard(
         tone: InkTone.warning,
         child: Text(
-          '对方的课表超过 7 天未同步，暂不计算共同空闲。让对方打开情侣课表刷新一次即可。',
+          '对方课表超过 7 天未同步，首页的 TA 课程可能不是最新。',
           style: context.tsSecondary.copyWith(height: 1.5),
         ),
       ),
     );
   }
-
-  Widget _freeCard(BuildContext context) {
-    final free = freeSections(_mine, _partner.courses, _day, _week);
-    return Padding(
-      padding: const EdgeInsets.only(top: InkSpacing.s),
-      child: InkCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('当天的共同空闲', style: context.tsBodyStrong),
-            const SizedBox(height: InkSpacing.xs),
-            Text(
-              free.isEmpty
-                  ? '这节课表上没有共同空闲节次'
-                  : free.map((e) => '第${e.$1}-${e.$2}节').join('、'),
-              style: context.tsSecondary.copyWith(height: 1.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _viewCard(BuildContext context) {
-    final cs = context.scheme;
-    return InkCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(InkSpacing.m),
-            child: SegmentedButton<int>(
-              showSelectedIcon: false,
-              expandedInsets: EdgeInsets.zero,
-              segments: const [
-                ButtonSegment(value: 0, label: Text('我')),
-                ButtonSegment(value: 1, label: Text('TA')),
-                ButtonSegment(value: 2, label: Text('合看')),
-              ],
-              selected: {_view},
-              onSelectionChanged: (s) => setState(() => _view = s.first),
-            ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: InkSpacing.s,
-              vertical: InkSpacing.xs,
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: '上一周',
-                  onPressed: _week > 1 ? () => setState(() => _week -= 1) : null,
-                  icon: const Icon(Icons.chevron_left_rounded),
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Text('第 $_week 周', style: context.tsBodyStrong),
-                      Text('切换周次查看对应课程', style: context.tsCaption),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: '下一周',
-                  onPressed: _week < 30 ? () => setState(() => _week += 1) : null,
-                  icon: const Icon(Icons.chevron_right_rounded),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: InkSpacing.m),
-              children: [
-                for (var d = 1; d <= 7; d++)
-                  Padding(
-                    padding: const EdgeInsets.only(right: InkSpacing.s),
-                    child: ChoiceChip(
-                      label: Text(const ['一', '二', '三', '四', '五', '六', '日'][d - 1]),
-                      selected: _day == d,
-                      onSelected: (_) => setState(() => _day = d),
-                      labelStyle: TextStyle(
-                        color: _day == d ? cs.onPrimaryContainer : null,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: InkSpacing.s),
-        ],
-      ),
-    );
-  }
-
-  Widget _courseSection(BuildContext context) {
-    final groups = _view == 2 ? _mergedGroups() : null;
-    final list = _view == 0
-        ? _mineOfDay()
-        : _view == 1
-            ? _partnerOfDay()
-            : const <CoupleCourse>[];
-    final hasAny = groups != null ? groups.isNotEmpty : list.isNotEmpty;
-    if (!hasAny) {
-      return InkCard(
-        child: Text(
-          _view == 2
-              ? '双方当天都没有课程'
-              : (_view == 0 ? '我当天没有课程' : '$_nickname 当天没有课程'),
-          style: context.tsSecondary,
-        ),
-      );
-    }
-    if (groups != null) {
-      return Column(
-        children: [
-          for (final g in groups)
-            Padding(
-              padding: const EdgeInsets.only(bottom: InkSpacing.s),
-              child: g.length == 1
-                  ? _CourseCard(
-                      course: g.first.c,
-                      mine: g.first.mine,
-                      nickname: _nickname,
-                      showOwner: true,
-                    )
-                  : IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: _CourseCard(
-                              course: g[0].c,
-                              mine: g[0].mine,
-                              nickname: _nickname,
-                              showOwner: true,
-                              compact: true,
-                            ),
-                          ),
-                          const SizedBox(width: InkSpacing.s),
-                          Expanded(
-                            child: _CourseCard(
-                              course: g[1].c,
-                              mine: g[1].mine,
-                              nickname: _nickname,
-                              showOwner: true,
-                              compact: true,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
-        ],
-      );
-    }
-    return Column(
-      children: [
-        for (final c in list)
-          Padding(
-            padding: const EdgeInsets.only(bottom: InkSpacing.s),
-            child: _CourseCard(
-              course: c,
-              mine: _view == 0,
-              nickname: _nickname,
-              showOwner: false,
-            ),
-          ),
-      ],
-    );
-  }
-
-  List<CoupleCourse> _mineOfDay() => _mine
-      .where((c) => c.weekday == _day && c.activeInWeek(_week))
-      .toList()
-    ..sort((a, b) => a.startSection.compareTo(b.startSection));
-
-  List<CoupleCourse> _partnerOfDay() => _partner.courses
-      .where((c) => c.weekday == _day && c.activeInWeek(_week))
-      .toList()
-    ..sort((a, b) => a.startSection.compareTo(b.startSection));
-
-  List<List<_OwnerCourse>> _mergedGroups() {
-    final all = <_OwnerCourse>[
-      for (final c in _mineOfDay()) _OwnerCourse(c, true),
-      for (final c in _partnerOfDay()) _OwnerCourse(c, false),
-    ]..sort((a, b) => a.c.startSection.compareTo(b.c.startSection));
-    final groups = <List<_OwnerCourse>>[];
-    for (final e in all) {
-      List<_OwnerCourse>? target;
-      for (final g in groups) {
-        if (g.length >= 2) continue;
-        if (g.any((x) => _overlap(x.c, e.c))) {
-          target = g;
-          break;
-        }
-      }
-      if (target != null) {
-        target.add(e);
-      } else {
-        groups.add([e]);
-      }
-    }
-    groups.sort((a, b) => a.first.c.startSection.compareTo(b.first.c.startSection));
-    return groups;
-  }
-
-  static bool _overlap(CoupleCourse a, CoupleCourse b) =>
-      a.startSection <= b.endSection && b.startSection <= a.endSection;
 
   String _fmtUpdated(int ms) {
     if (ms <= 0) return '尚未同步';
@@ -823,71 +606,3 @@ class _CouplePageState extends ConsumerState<CouplePage> {
   }
 }
 
-class _OwnerCourse {
-  final CoupleCourse c;
-  final bool mine;
-  const _OwnerCourse(this.c, this.mine);
-}
-
-class _CourseCard extends StatelessWidget {
-  const _CourseCard({
-    required this.course,
-    required this.mine,
-    required this.nickname,
-    required this.showOwner,
-    this.compact = false,
-  });
-
-  final CoupleCourse course;
-  final bool mine;
-  final String nickname;
-  final bool showOwner;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = context.scheme;
-    final accent = mine ? cs.primary : const Color(0xFF4FA8F5);
-    return InkCard(
-      padding: EdgeInsets.symmetric(
-        horizontal: InkSpacing.m,
-        vertical: compact ? InkSpacing.s : InkSpacing.m,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (showOwner) ...[
-            Text(
-              mine ? '我' : nickname,
-              style: context.tsCaption.copyWith(
-                color: accent,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 2),
-          ],
-          Text(
-            course.name,
-            maxLines: compact ? 3 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: context.tsBodyStrong.copyWith(fontSize: compact ? 13.5 : null),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '第${course.startSection}-${course.endSection}节',
-            style: context.tsCaption.copyWith(color: accent),
-          ),
-          if (course.room.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              course.room,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: context.tsCaption,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}

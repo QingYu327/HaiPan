@@ -47,8 +47,9 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1">
 
+                <!-- 日期与标题同一行，节省头部高度 -->
                 <TextView
-                    android:id="@+id/tv_meta"
+                    android:id="@+id/tv_date"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
@@ -59,7 +60,20 @@
                     android:textColor="@color/widget_muted"
                     android:textSize="12sp" />
 
-                <!-- 正在上课时接管周次位置，由 Chronometer 自动倒计时 -->
+                <TextView
+                    android:id="@+id/tv_meta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:gravity="end|center_vertical"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.02"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_muted"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+                <!-- 正在上课时接管日期位置，由 Chronometer 自动倒计时 -->
                 <Chronometer
                     android:id="@+id/chrono_countdown"
                     android:layout_width="wrap_content"
@@ -73,18 +87,6 @@
                     android:visibility="gone" />
             </FrameLayout>
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/tv_date"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:includeFontPadding="false"
-            android:letterSpacing="0.02"
-            android:maxLines="1"
-            android:textColor="@color/widget_muted"
-            android:textSize="12sp" />
     </LinearLayout>
 
     <FrameLayout

@@ -146,8 +146,8 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
 
 
         // 高度预算（dp 近似）：先按一行考试估算可见课程行数
-        // 头部固定为「标题 + 周次」与「日期」两行；考试区预留主考试与面板内边距
-        val headerH = m.title * 1.35f + m.meta * 1.35f + 10f
+        // 头部把日期并到标题同一行，只按一行高度计算；考试区预留主考试与面板内边距
+        val headerH = m.title * 1.35f + 6f
         val rowH = m.name * 1.22f + m.room * 1.18f + m.gap * 2f + 1f
         val moreH = m.meta * 1.45f + 2f
         val extraH = m.meta * 1.45f + 4f
@@ -301,10 +301,10 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
             c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)
         )
         val place = exam.optString("p")
+        // 年份已在顶部日期显示，这里只留月日，避免重复信息
         views.setTextViewText(
             R.id.tv_exam_sub,
-            "${c.get(Calendar.YEAR)}年${c.get(Calendar.MONTH) + 1}月" +
-                "${c.get(Calendar.DAY_OF_MONTH)}日 $hm" +
+            "${c.get(Calendar.MONTH) + 1}月${c.get(Calendar.DAY_OF_MONTH)}日 $hm" +
                 if (place.isEmpty()) "" else " · $place"
         )
 
@@ -320,7 +320,7 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
             )
             views.setTextViewText(
                 R.id.tv_exam2,
-                "下一场 ${c2.get(Calendar.YEAR)}年${c2.get(Calendar.MONTH) + 1}月" +
+                "下一场 ${c2.get(Calendar.MONTH) + 1}月" +
                     "${c2.get(Calendar.DAY_OF_MONTH)}日 $hm2 ${second.optString("n")}"
             )
             views.setViewVisibility(R.id.tv_exam2, View.VISIBLE)
@@ -536,7 +536,8 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
         val remainMs = if (endMin == null) 0L else endMin * 60_000L - nowMs
         if (remainMs <= 0L) {
             views.setViewVisibility(R.id.chrono_countdown, View.GONE)
-            views.setViewVisibility(R.id.tv_meta, View.VISIBLE)
+            views.setViewVisibility(R.id.tv_meta, View.GONE)
+            views.setViewVisibility(R.id.tv_date, View.VISIBLE)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -549,11 +550,14 @@ abstract class ScheduleWidgetBase : AppWidgetProvider() {
             views.setChronometerCountDown(R.id.chrono_countdown, true)
             views.setViewVisibility(R.id.chrono_countdown, View.VISIBLE)
             views.setViewVisibility(R.id.tv_meta, View.GONE)
+            // 倒计时接管右上角，避免与日期文字重叠
+            views.setViewVisibility(R.id.tv_date, View.GONE)
         } else {
             val mins = ((remainMs + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
             views.setViewVisibility(R.id.chrono_countdown, View.GONE)
             views.setTextViewText(R.id.tv_meta, "距下课 $mins 分")
             views.setViewVisibility(R.id.tv_meta, View.VISIBLE)
+            views.setViewVisibility(R.id.tv_date, View.GONE)
         }
     }
 

@@ -214,7 +214,7 @@ abstract final class InkCourseTints {
     (Color(0xFFEDE9F6), Color(0xFF53407A)), // 紫
     (Color(0xFFF7EEDF), Color(0xFF8A5A22)), // 橙
     (Color(0xFFE2F1F2), Color(0xFF24666B)), // 青
-    (Color(0xFFF6E8EC), Color(0xFF8A3B51)), // 粉
+    (Color(0xFFF8F1CF), Color(0xFF7A6418)), // 琥珀（深粉色专供 TA，普通课程不再使用粉色）
     (Color(0xFFE7EAF3), Color(0xFF3E4C79)), // 靛
     (Color(0xFFEFEBE7), Color(0xFF5B4A3D)), // 棕
   ];
@@ -225,7 +225,7 @@ abstract final class InkCourseTints {
     (Color(0xFF2C2A42), Color(0xFFB4A8E0)),
     (Color(0xFF3A3020), Color(0xFFDDBB85)),
     (Color(0xFF1B3638), Color(0xFF8CC7C9)),
-    (Color(0xFF3A2429), Color(0xFFDFA3B2)),
+    (Color(0xFF3B3418), Color(0xFFE0CE86)),
     (Color(0xFF252A3F), Color(0xFFA9B4E2)),
     (Color(0xFF2E2A26), Color(0xFFC9B7A5)),
   ];

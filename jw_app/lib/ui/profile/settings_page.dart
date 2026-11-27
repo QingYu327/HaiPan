@@ -3,13 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../providers/session_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/ink_page_transition.dart';
 import '../../theme/ink_tokens.dart';
 import '../../util/lesson_notifier.dart';
+import '../../util/storage_usage.dart';
 import '../../util/term_utils.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/ink_dialog.dart';
@@ -625,18 +625,8 @@ class _StorageSectionState extends ConsumerState<_StorageSection> {
   }
 
   Future<void> _compute() async {
-    int total = 0;
-    try {
-      final dir = await getApplicationSupportDirectory();
-      await for (final f in dir.list(recursive: true, followLinks: false)) {
-        if (f is File) {
-          try {
-            total += await f.length();
-          } catch (_) {}
-        }
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _bytes = total);
+    final report = await computeStorageUsage();
+    if (mounted) setState(() => _bytes = report.total);
   }
 
   String _fmt(int b) {
@@ -655,8 +645,12 @@ class _StorageSectionState extends ConsumerState<_StorageSection> {
         subtitle: _fmt(_bytes),
         icon: AppIcons.storage,
         iconTone: InkTone.info,
-        onTap: () => Navigator.push(context,
-            InkPageRoute(builder: (_) => const StoragePage())),
+        onTap: () async {
+          await Navigator.push(context,
+              InkPageRoute(builder: (_) => const StoragePage()));
+          // 详情页可能清理了数据，返回后重新统计入口大小
+          if (mounted) _compute();
+        },
         showDivider: false,
       ),
     );

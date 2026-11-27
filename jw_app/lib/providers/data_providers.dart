@@ -3,8 +3,10 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/couple_api.dart';
 import '../api/jw_apis.dart';
 import '../api/usage_api.dart';
+import '../models/couple_models.dart';
 import '../models/models.dart';
 import '../util/app_log.dart';
 import '../util/campus_tunnel.dart';
@@ -544,6 +546,15 @@ final appAccessProvider = FutureProvider.autoDispose<bool>((ref) async {
   } catch (_) {
     AppLog.w('准入', '在线校验失败 ${sw.elapsedMilliseconds}ms');
     return await deny();
+  }
+});
+
+/// TA 课表本地快照：课表首页直接读取缓存，不主动发起网络同步。
+/// 配对 / 手动同步 / 解绑后由 [CoupleApi.changes] 驱动刷新。
+final partnerSnapshotProvider = StreamProvider<CouplePartner>((ref) async* {
+  yield await CoupleApi.partnerSnapshot();
+  await for (final _ in CoupleApi.changes) {
+    yield await CoupleApi.partnerSnapshot();
   }
 });
 

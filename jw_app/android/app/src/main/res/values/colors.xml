@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_bg">#E6F7F9FA</color>
+    <!-- 半透明液态玻璃底：约 72% 不透明度，让桌面壁纸隐约透出 -->
+    <color name="widget_bg">#B8F7F9FA</color>
     <color name="widget_text">#1E2C35</color>
     <color name="widget_muted">#4C5E6A</color>
     <color name="widget_hairline">#D8E1E7</color>

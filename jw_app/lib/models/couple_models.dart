@@ -1,4 +1,3 @@
-import '../util/term_utils.dart';
 import 'models.dart';
 
 /// 情侣课表同步的课程：只包含课名、时间、地点、周次。
@@ -61,12 +60,6 @@ class CoupleStatus {
     final at = DateTime.fromMillisecondsSinceEpoch(partnerUpdatedAt);
     return DateTime.now().difference(at) > const Duration(days: 7);
   }
-
-  bool get mineStale {
-    if (myUpdatedAt <= 0) return true;
-    final at = DateTime.fromMillisecondsSinceEpoch(myUpdatedAt);
-    return DateTime.now().difference(at) > const Duration(days: 7);
-  }
 }
 
 class CouplePartner {
@@ -102,43 +95,4 @@ List<CoupleCourse> coupleCoursesOf(List<CourseEntry> courses) {
     ));
   }
   return out;
-}
-
-/// 12 节制的空闲节次（仅用于展示共同空闲）
-List<(int, int)> freeSections(
-  List<CoupleCourse> a,
-  List<CoupleCourse> b,
-  int weekday,
-  int week, {
-  int maxSection = 12,
-}) {
-  final busy = List<bool>.filled(maxSection + 1, false);
-  for (final c in [...a, ...b]) {
-    if (c.weekday != weekday || !c.activeInWeek(week)) continue;
-    for (var i = c.startSection; i <= c.endSection; i++) {
-      if (i >= 1 && i <= maxSection) busy[i] = true;
-    }
-  }
-  final out = <(int, int)>[];
-  int? start;
-  for (var i = 1; i <= maxSection; i++) {
-    if (!busy[i] && start == null) start = i;
-    if (busy[i] && start != null) {
-      out.add((start, i - 1));
-      start = null;
-    }
-  }
-  if (start != null) out.add((start, maxSection));
-  return out;
-}
-
-String coupleWeekLabel(int week) => '第 $week 周';
-
-/// 当天星期（1-7），用于页面默认选中
-int todayWeekday() => DateTime.now().weekday;
-
-/// 当前学期估算周次，失败时回退第 1 周
-int coupleCurrentWeek(Term term) {
-  final w = TermUtils.estimatedCurrentWeek(term);
-  return (w == null || w < 1) ? 1 : w;
 }

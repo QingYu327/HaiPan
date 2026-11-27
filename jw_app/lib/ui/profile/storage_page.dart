@@ -1,13 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../providers/data_providers.dart';
 import '../../theme/ink_tokens.dart';
 import '../../util/app_log.dart';
+import '../../util/storage_usage.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/ink_dialog.dart';
 import '../widgets/ink_notice.dart';
@@ -24,8 +22,7 @@ class StoragePage extends ConsumerStatefulWidget {
 class _Cat {
   final String name;
   final int bytes;
-  final InkTone tone;
-  const _Cat(this.name, this.bytes, this.tone);
+  const _Cat(this.name, this.bytes);
 }
 
 class _StoragePageState extends ConsumerState<StoragePage> {
@@ -41,90 +38,13 @@ class _StoragePageState extends ConsumerState<StoragePage> {
 
   Future<void> _compute() async {
     setState(() => _loading = true);
-    int logBytes = 0;
-    int cookieBytes = 0;
-    int fileTotal = 0;
-
-    // 应用私有目录：Android 直接扫描包目录，覆盖 files / cache /
-    // shared_prefs / databases / no_backup 等全部落盘数据；
-    // 其他平台逐个加入支持目录、文档目录、缓存目录与临时目录。
-    final roots = <Directory>[];
-    void addRoot(Directory? d) {
-      if (d == null) return;
-      final p = d.path;
-      final sep = Platform.pathSeparator;
-      if (roots.any((r) => p == r.path || p.startsWith('${r.path}$sep'))) {
-        return;
-      }
-      roots.removeWhere((r) => r.path.startsWith('$p$sep'));
-      roots.add(d);
-    }
-
-    try {
-      final support = await getApplicationSupportDirectory();
-      if (Platform.isAndroid || Platform.isIOS) addRoot(support.parent);
-      addRoot(support);
-    } catch (_) {}
-    try {
-      addRoot(await getApplicationDocumentsDirectory());
-    } catch (_) {}
-    try {
-      addRoot(await getApplicationCacheDirectory());
-    } catch (_) {}
-    try {
-      addRoot(await getTemporaryDirectory());
-    } catch (_) {}
-
-    for (final root in roots) {
-      try {
-        await for (final f in root.list(recursive: true, followLinks: false)) {
-          if (f is! File) continue;
-          int len;
-          try {
-            len = await f.length();
-          } catch (_) {
-            continue;
-          }
-          fileTotal += len;
-          final name = f.path.split(Platform.pathSeparator).last;
-          if (name.toLowerCase().endsWith('.log') ||
-              name.startsWith('haipan-feedback-')) {
-            logBytes += len;
-          }
-          if (name == 'cookies') cookieBytes += len;
-        }
-      } catch (_) {}
-    }
-
-    // 离线缓存：SharedPreferences 中 cache_ 键的字符串长度
-    int cacheBytes = 0;
-    try {
-      final p = await SharedPreferences.getInstance();
-      for (final k in p.getKeys()) {
-        if (k.startsWith('cache_')) {
-          cacheBytes += (p.getString(k)?.length ?? 0);
-        }
-      }
-    } catch (_) {}
-    // 缓存值存放在 shared_prefs 文件内，已计入 fileTotal，避免重复累加
-    cacheBytes = cacheBytes.clamp(0, (fileTotal - logBytes - cookieBytes).clamp(0, 1 << 40));
-
-    final otherBytes =
-        (fileTotal - logBytes - cookieBytes - cacheBytes).clamp(0, 1 << 40);
-    final list = <_Cat>[
-      if (logBytes > 0) _Cat('日志', logBytes, InkTone.info),
-      if (cacheBytes > 0) _Cat('离线缓存', cacheBytes, InkTone.success),
-      if (cookieBytes > 0) _Cat('会话', cookieBytes, InkTone.warning),
-      if (otherBytes > 0) _Cat('其他文件', otherBytes, InkTone.danger),
-    ];
-    final total = list.fold<int>(0, (s, c) => s + c.bytes);
-    if (mounted) {
-      setState(() {
-        _cats = list;
-        _total = total;
-        _loading = false;
-      });
-    }
+    final report = await computeStorageUsage();
+    if (!mounted) return;
+    setState(() {
+      _cats = [for (final b in report.buckets) _Cat(b.name, b.bytes)];
+      _total = report.total;
+      _loading = false;
+    });
   }
 
   String _fmt(int b) {
@@ -179,7 +99,14 @@ class _StoragePageState extends ConsumerState<StoragePage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [for (final c in _cats) inkToneColor(context, c.tone)];
+    // 分类配色：沿用课程色板的深色字色，再补一个中性灰给第 9 类
+    final palette = <Color>[
+      for (final t in InkCourseTints.of(context)) t.$2,
+      const Color(0xFF6B7280),
+    ];
+    final colors = [
+      for (var i = 0; i < _cats.length; i++) palette[i % palette.length],
+    ];
     return InkPageScaffold(
       showBack: true,
       title: '本地占用',
@@ -207,7 +134,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
                       const SizedBox(height: InkSpacing.m),
                       Text('共 ${_fmt(_total)}', style: context.tsSecondary),
                       const SizedBox(height: InkSpacing.m),
-                      for (final c in _cats)
+                      for (var i = 0; i < _cats.length; i++)
                         Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: InkSpacing.xs - 1),
@@ -217,17 +144,20 @@ class _StoragePageState extends ConsumerState<StoragePage> {
                                 width: 10,
                                 height: 10,
                                 decoration: BoxDecoration(
-                                  color: inkToneColor(context, c.tone),
+                                  color: colors[i],
                                   shape: BoxShape.circle,
                                 ),
                               ),
                               const SizedBox(width: InkSpacing.s),
                               Expanded(
-                                child: Text(c.name, style: context.tsBody),
+                                child: Text(
+                                  _cats[i].name,
+                                  style: context.tsBody,
+                                ),
                               ),
                               Text(
-                                '${_fmt(c.bytes)}'
-                                '（${(c.bytes / (_total > 0 ? _total : 1) * 100).toStringAsFixed(1)}%）',
+                                '${_fmt(_cats[i].bytes)}'
+                                '（${(_cats[i].bytes / (_total > 0 ? _total : 1) * 100).toStringAsFixed(1)}%）',
                                 style: context.tsSecondary,
                               ),
                             ],

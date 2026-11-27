@@ -20,6 +20,7 @@ class AppSettings {
   final int remindMinutes; // 上课提醒提前分钟数
   final int examRemindMinutes; // 考试提醒提前分钟数
   final List<SectionTime> sectionTimes; // 各节上课 / 下课时间
+  final int partnerViewMode; // 首页课表视图：0 我 / 1 TA / 2 合看
 
   // 自定义背景：ink=默认宣纸，其余为预设渐变；solid=纯色，image=图片
   final String backgroundStyle;
@@ -39,6 +40,7 @@ class AppSettings {
     this.remindMinutes = 10,
     this.examRemindMinutes = 30,
     this.sectionTimes = kDefaultSectionTimes,
+    this.partnerViewMode = 2,
     this.backgroundStyle = 'ink',
     this.backgroundSeed = 0xFFF7F9FA,
     this.backgroundImage = '',
@@ -59,6 +61,7 @@ class AppSettings {
     int? remindMinutes,
     int? examRemindMinutes,
     List<SectionTime>? sectionTimes,
+    int? partnerViewMode,
     String? backgroundStyle,
     int? backgroundSeed,
     String? backgroundImage,
@@ -78,6 +81,7 @@ class AppSettings {
         remindMinutes: remindMinutes ?? this.remindMinutes,
         examRemindMinutes: examRemindMinutes ?? this.examRemindMinutes,
         sectionTimes: sectionTimes ?? this.sectionTimes,
+        partnerViewMode: partnerViewMode ?? this.partnerViewMode,
         backgroundStyle: backgroundStyle ?? this.backgroundStyle,
         backgroundSeed: backgroundSeed ?? this.backgroundSeed,
         backgroundImage: backgroundImage ?? this.backgroundImage,
@@ -97,6 +101,7 @@ class SettingsController extends Notifier<AppSettings> {
   static const _kRemindMin = 'settings_remind_min';
   static const _kExamMin = 'settings_exam_remind_min';
   static const _kSectionTimes = 'settings_section_times';
+  static const _kPartnerView = 'settings_partner_view_mode';
   static const _kBgStyle = 'settings_bg_style';
   static const _kBgSeed = 'settings_bg_seed';
   static const _kBgImage = 'settings_bg_image';
@@ -129,6 +134,7 @@ class SettingsController extends Notifier<AppSettings> {
     await p.setInt(_kRemindMin, s.remindMinutes);
     await p.setInt(_kExamMin, s.examRemindMinutes);
     await p.setString(_kSectionTimes, SectionTimes.encode(s.sectionTimes));
+    await p.setInt(_kPartnerView, s.partnerViewMode);
     await p.setString(_kBgStyle, s.backgroundStyle);
     await p.setInt(_kBgSeed, s.backgroundSeed);
     await p.setString(_kBgImage, s.backgroundImage);
@@ -162,6 +168,7 @@ class SettingsController extends Notifier<AppSettings> {
       remindMinutes: p.getInt(_kRemindMin) ?? 10,
       examRemindMinutes: p.getInt(_kExamMin) ?? 30,
       sectionTimes: sectionTimes,
+      partnerViewMode: p.getInt(_kPartnerView) ?? 2,
       backgroundStyle: p.getString(_kBgStyle) ?? 'ink',
       backgroundSeed: p.getInt(_kBgSeed) ?? 0xFFF7F9FA,
       // 旧版本可能存过在线链接，现已只支持本地图片，直接丢弃。
@@ -235,6 +242,14 @@ class SettingsController extends Notifier<AppSettings> {
     AppLog.d('提醒', '考试提前 $m 分钟');
     await _persist(state);
     await LessonNotifier.reschedule();
+  }
+
+  Future<void> setPartnerViewMode(int mode) async {
+    final v = mode.clamp(0, 2);
+    if (v == state.partnerViewMode) return;
+    state = state.copyWith(partnerViewMode: v);
+    AppLog.d('设置', '首页课表视图改为 ${const ['我', 'TA', '合看'][v]}');
+    await _persist(state);
   }
 
   /// 用户自定义各节上课 / 下课时间

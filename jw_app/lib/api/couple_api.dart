@@ -44,6 +44,11 @@ class CoupleApi {
   static Future<void>? _syncStarting;
 
   static String? _deviceId;
+  static final StreamController<void> _changes =
+      StreamController<void>.broadcast();
+
+  /// 配对 / 同步 / 解绑后通知课表刷新 TA 课程
+  static Stream<void> get changes => _changes.stream;
 
   // ---------------- 发起配对 ----------------
 
@@ -306,7 +311,8 @@ class CoupleApi {
     );
   }
 
-  static Future<CouplePartner> partner(String xh) async {
+  /// 课表首页读取 TA 课程快照（不发网络请求）
+  static Future<CouplePartner> partnerSnapshot() async {
     final pair = await _loadPair();
     return CouplePartner(
       courses: pair?.peerCourses ?? const [],
@@ -323,6 +329,7 @@ class CoupleApi {
     await p.remove(_pairKeyPref);
     await stopSyncListener();
     await stopPairing();
+    _notifyChanged();
   }
 
   // ---------------- 局域网同步 ----------------
@@ -618,6 +625,11 @@ class CoupleApi {
   static Future<void> _savePair(_LanPair pair) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_pairKeyPref, jsonEncode(pair.toJson()));
+    _notifyChanged();
+  }
+
+  static void _notifyChanged() {
+    if (!_changes.isClosed) _changes.add(null);
   }
 
   static Future<String> _ensureDeviceId() async {
