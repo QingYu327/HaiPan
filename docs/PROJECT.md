@@ -1,6 +1,6 @@
 # 海畔（jw_app）项目文档
 
-> 面向接手者与后续 AI 开发的现状说明书。所有结论均来自当前代码（`jw_app/lib`，版本 `1.0.1+4146`）。
+> 面向接手者与后续 AI 开发的现状说明书。所有结论均来自当前代码（`jw_app/lib`，版本 `1.0.1+4147`）。
 > 文中统一用「学校」代指学校名称；域名、路径等均取自代码常量，沿用原样以便检索。
 > 修改历史与逐批决策见 [`docs/modification_log.md`](modification_log.md)（最新在前，已写到 Batch85）。
 
@@ -18,7 +18,7 @@
 | 性质 | 非官方校园教务助手，个人开发 |
 | 数据来源 | 学校正方教务系统 + 学校统一身份认证（authserver） |
 | 联网方式 | 校内直连；校外经自建 WebSocket 隧道回到校园网 |
-| 文档基线 | `pubspec.yaml` version `1.0.1+4146` |
+| 文档基线 | `pubspec.yaml` version `1.0.1+4147` |
 
 ### 1.2 功能清单（以代码实际能力为准）
 
@@ -30,6 +30,7 @@
 | 学业 | `lib/ui/academic/academic_page.dart` | 修读计划分类、修读状态（已修/在读/未修）、学分进度；入口进排名页 |
 | 绩点排名 | `lib/ui/rank/rank_page.dart` | 学年学期区间、成绩性质、统计范围筛选与查询 |
 | 空教室 | `lib/ui/profile/favorite_rooms_page.dart` | 校区/楼号/类别筛选，周次/星期/节次多选，常用教室收藏 |
+| 情侣课表 | `lib/ui/couple/couple_page.dart` | 6 位配对码一对一绑定，我/TA/合看三视图、共同空闲；仅同步课名/时间/地点/周次 |
 | 通识拓展学分 | `lib/ui/profile/ge_credit_page.dart` | 按通识子类汇总已修学分，最低要求可本地调整 |
 | 个人信息 | `lib/ui/profile/profile_page.dart` | 学号/姓名/院系/专业/年级/班级，退出登录 |
 | 桌面小组件 | `android/.../ScheduleWidgetBase.kt` 等 | 「今日课表」「课表 + 考试」两种组件 |
@@ -356,7 +357,7 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 
 | 位置 | 当前值 | 规则 |
 |---|---|---|
-| `pubspec.yaml` `version` | `1.0.1+4146` | 正式线固定 `1.0.1`，只递增 `+` 后的构建号 |
+| `pubspec.yaml` `version` | `1.0.1+4147` | 正式线固定 `1.0.1`，只递增 `+` 后的构建号 |
 | `lib/util/build_info.dart` | 运行时读取 | 不再维护 Dart 常量，安装包 versionName / versionCode 是唯一来源 |
 | `android/gradle.properties` | `force-version-code-ignoring-abi=true` | 强制 `versionCode` = 构建号，不加 ABI 偏移（arm64 的 +2000） |
 
@@ -367,7 +368,7 @@ Cookie：`PersistCookieJar(storage: FileStorage('<应用支持目录>/cookies'))
 - 源文件：`site/index.html`（首页）、`site/docs.html`（使用文档）、`site/notes.html`（注意事项）、`site/assets/`（共享样式、脚本、APP 图标）。
 - 部署仓库：GitHub `QingYu327/haipan-website`（`main`，Netlify 自动部署）；Gitee `heaven-does-not-move/haipan-website`（`master` 镜像）。
 - 首页顶部导航在桌面显示「功能 / 网络 / 使用文档 / 注意事项」；≤860px 收起为菜单按钮，展开后仍包含文档与注意事项入口。
-- 官网下载直链依赖 Release 资产名 `haipan-app-release.apk`；版本标签需与 App 当前 `1.0.1+4146` 保持同步。
+- 官网下载直链依赖 Release 资产名 `haipan-app-release.apk`；版本标签需与 App 当前 `1.0.1+4147` 保持同步。
 
 ---
 

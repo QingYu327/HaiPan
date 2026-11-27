@@ -354,6 +354,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   /// 服务端拒绝：学号不在 APP 准入白名单（403 not_allowed）
   static bool _isNoPermission(String msg) =>
       msg.contains('白名单') ||
+      msg.contains('公网通道') ||
       msg.contains('无权限') ||
       msg.contains('not_allowed');
 
@@ -362,7 +363,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   void _handleNoPermission() {
     showInkNotice(
       context,
-      '当前学号未获授权，无法登录',
+      '未开通公网通道，请使用校园网连接或联系管理员开通',
       title: '无权限登录',
       tone: InkTone.danger,
     );
@@ -444,7 +445,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
         return '该学号已绑定其他设备，请先在网页登录或联系管理员重置';
       }
       if (code == 'not_allowed' || status == 403) {
-        return '该学号未加入白名单，暂无法校外登录';
+        return '认证失败，请使用校园网登录或联系管理员';
       }
       if (_isNetwork(e)) return '网络连接失败，请检查网络后重试';
       if (status != null) return '登录通道异常（$status），请稍后重试';
@@ -574,7 +575,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           const SizedBox(width: InkSpacing.s),
           Expanded(
             child: Text(
-              '建议使用校园网登录。公网通道需联系管理员开通，且速度较慢',
+              '请使用校园网登录，公网通道需向管理员申请',
               style: context.tsSecondary,
             ),
           ),

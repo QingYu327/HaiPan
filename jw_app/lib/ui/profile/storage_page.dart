@@ -44,11 +44,47 @@ class _StoragePageState extends ConsumerState<StoragePage> {
     int logBytes = 0;
     int cookieBytes = 0;
     int fileTotal = 0;
+
+    // 应用私有目录：Android 直接扫描包目录，覆盖 files / cache /
+    // shared_prefs / databases / no_backup 等全部落盘数据；
+    // 其他平台逐个加入支持目录、文档目录、缓存目录与临时目录。
+    final roots = <Directory>[];
+    void addRoot(Directory? d) {
+      if (d == null) return;
+      final p = d.path;
+      final sep = Platform.pathSeparator;
+      if (roots.any((r) => p == r.path || p.startsWith('${r.path}$sep'))) {
+        return;
+      }
+      roots.removeWhere((r) => r.path.startsWith('$p$sep'));
+      roots.add(d);
+    }
+
     try {
-      final dir = await getApplicationSupportDirectory();
-      await for (final f in dir.list(recursive: true, followLinks: false)) {
-        if (f is File) {
-          final len = await f.length();
+      final support = await getApplicationSupportDirectory();
+      if (Platform.isAndroid || Platform.isIOS) addRoot(support.parent);
+      addRoot(support);
+    } catch (_) {}
+    try {
+      addRoot(await getApplicationDocumentsDirectory());
+    } catch (_) {}
+    try {
+      addRoot(await getApplicationCacheDirectory());
+    } catch (_) {}
+    try {
+      addRoot(await getTemporaryDirectory());
+    } catch (_) {}
+
+    for (final root in roots) {
+      try {
+        await for (final f in root.list(recursive: true, followLinks: false)) {
+          if (f is! File) continue;
+          int len;
+          try {
+            len = await f.length();
+          } catch (_) {
+            continue;
+          }
           fileTotal += len;
           final name = f.path.split(Platform.pathSeparator).last;
           if (name.toLowerCase().endsWith('.log') ||
@@ -57,8 +93,8 @@ class _StoragePageState extends ConsumerState<StoragePage> {
           }
           if (name == 'cookies') cookieBytes += len;
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     // 离线缓存：SharedPreferences 中 cache_ 键的字符串长度
     int cacheBytes = 0;
@@ -70,8 +106,11 @@ class _StoragePageState extends ConsumerState<StoragePage> {
         }
       }
     } catch (_) {}
+    // 缓存值存放在 shared_prefs 文件内，已计入 fileTotal，避免重复累加
+    cacheBytes = cacheBytes.clamp(0, (fileTotal - logBytes - cookieBytes).clamp(0, 1 << 40));
 
-    final otherBytes = (fileTotal - logBytes - cookieBytes).clamp(0, 1 << 40);
+    final otherBytes =
+        (fileTotal - logBytes - cookieBytes - cacheBytes).clamp(0, 1 << 40);
     final list = <_Cat>[
       if (logBytes > 0) _Cat('日志', logBytes, InkTone.info),
       if (cacheBytes > 0) _Cat('离线缓存', cacheBytes, InkTone.success),
@@ -92,6 +131,12 @@ class _StoragePageState extends ConsumerState<StoragePage> {
     if (b < 1024) return '$b B';
     if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)} KB';
     return '${(b / 1024 / 1024).toStringAsFixed(2)} MB';
+  }
+
+  /// 圆环中心：不足 1 MB 时精确到 KB，避免小体积显示成 0
+  String _ringLabel(int b) {
+    if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)} KB';
+    return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 
   Future<void> _confirm(String title, String msg, Future<void> Function() act,
@@ -156,6 +201,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
                           cats: _cats,
                           total: _total,
                           colors: colors,
+                          label: _ringLabel(_total),
                         ),
                       ),
                       const SizedBox(height: InkSpacing.m),
@@ -225,10 +271,12 @@ class _PieChart extends StatelessWidget {
   final List<_Cat> cats;
   final int total;
   final List<Color> colors;
+  final String label;
   const _PieChart({
     required this.cats,
     required this.total,
     required this.colors,
+    required this.label,
   });
 
   @override
@@ -238,6 +286,7 @@ class _PieChart extends StatelessWidget {
         cats: cats,
         total: total,
         colors: colors,
+        label: label,
         emptyColor: context.ink.hairline,
         labelStyle: context.tsBodyStrong,
       ),
@@ -250,12 +299,14 @@ class _PiePainter extends CustomPainter {
   final List<_Cat> cats;
   final int total;
   final List<Color> colors;
+  final String label;
   final Color emptyColor;
   final TextStyle labelStyle;
   _PiePainter({
     required this.cats,
     required this.total,
     required this.colors,
+    required this.label,
     required this.emptyColor,
     required this.labelStyle,
   });
@@ -271,32 +322,33 @@ class _PiePainter extends CustomPainter {
         ..strokeWidth = 14
         ..style = PaintingStyle.stroke;
       canvas.drawCircle(rect.center, rect.width / 2, p);
-      return;
+    } else {
+      final p = Paint()
+        ..strokeWidth = 14
+        ..style = PaintingStyle.stroke;
+      var start = -3.14159265 / 2;
+      for (var i = 0; i < cats.length; i++) {
+        final c = cats[i];
+        final sweep = 2 * 3.14159265 * c.bytes / total;
+        p.color = colors[i];
+        canvas.drawArc(rect, start, sweep, false, p);
+        start += sweep;
+      }
     }
-    final p = Paint()
-      ..strokeWidth = 14
-      ..style = PaintingStyle.stroke;
-    var start = -3.14159265 / 2;
-    for (var i = 0; i < cats.length; i++) {
-      final c = cats[i];
-      final sweep = 2 * 3.14159265 * c.bytes / total;
-      p.color = colors[i];
-      canvas.drawArc(rect, start, sweep, false, p);
-      start += sweep;
-    }
-    // 中心文字
+    // 中心文字：不足 1 MB 时按 KB 显示
     final tp = TextPainter(
-      text: TextSpan(
-        text: '${(total / 1024 / 1024).toStringAsFixed(1)}MB',
-        style: labelStyle,
-      ),
+      text: TextSpan(text: label, style: labelStyle),
       textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset(rect.center.dx - tp.width / 2,
-        rect.center.dy - tp.height / 2));
+      maxLines: 1,
+    )..layout(maxWidth: rect.width);
+    tp.paint(canvas,
+        Offset(rect.center.dx - tp.width / 2, rect.center.dy - tp.height / 2));
   }
 
   @override
   bool shouldRepaint(covariant _PiePainter old) =>
-      old.total != total || old.cats != cats || old.colors != colors;
+      old.total != total ||
+      old.label != label ||
+      old.cats != cats ||
+      old.colors != colors;
 }

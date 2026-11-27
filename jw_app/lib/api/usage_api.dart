@@ -165,7 +165,7 @@ class UsageTracker {
     if (d is! Map) return null;
     final code = '${d['error'] ?? d['code'] ?? ''}';
     if (code == 'not_allowed') {
-      return AccessDeniedException('not_allowed', '该学号未开通公网通道，请使用校园网登录或联系管理员');
+      return AccessDeniedException('not_allowed', '未开通公网通道，请使用校园网连接或联系管理员开通');
     }
     if (code == 'device_mismatch') {
       return AccessDeniedException(
@@ -269,6 +269,22 @@ class UsageTracker {
     return t;
   }
 
+  /// 带会话访问云端接口（自动拼接当前入口），供情侣课表等扩展功能使用。
+  static Future<Response<dynamic>> apiRequest(
+    String method,
+    String path, {
+    required String xh,
+    Map<String, dynamic>? query,
+    Object? data,
+  }) =>
+      _authed(
+        method,
+        '$_backendUrl$path',
+        xh: xh,
+        query: query,
+        data: data,
+      );
+
   /// 主动作废会话（隧道握手 401 时调用，下次会重新认证）。
   static void invalidateSession() => _clearSession();
 
@@ -329,7 +345,7 @@ class UsageTracker {
     final d = r.data;
     if (d is Map && d.containsKey(gateApp)) {
       if (d[gateApp] == true) return true;
-      throw AccessDeniedException('not_allowed', '该学号未开通公网通道，请使用校园网登录或联系管理员');
+      throw AccessDeniedException('not_allowed', '未开通公网通道，请使用校园网连接或联系管理员开通');
     }
     // 结构不认识时不拦，交给后续真实请求判断
     return true;

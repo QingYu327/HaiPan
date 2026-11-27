@@ -11,6 +11,31 @@
 > 6. 遗留问题与下一步。
 > 新批次写在最上方（最新在前）。
 
+## 2026-11-27 · Batch90：情侣课表首版（4147，模拟器验证）
+
+### 范围
+- 后端 `backend/server.js`：新增 `/pair/code`、`/pair/bind`、`/pair/status`、`/pair/sync`、`/pair/partner`、`DELETE /pair`；配对码 10 分钟有效，同一学号连续输错 5 次暂停 10 分钟，180 天无同步自动解绑。
+- 客户端：新增 `lib/models/couple_models.dart`、`lib/api/couple_api.dart`、`lib/ui/couple/couple_page.dart`；「我的」页新增「情侣课表」入口；`UsageTracker` 暴露带会话的 `apiRequest`。
+- 官网：`site/notes.html` 删除指定的隶属关系表述。
+
+### 决策
+- 一对一绑定，任一方解除即整体失效；昵称仅保存在本机，默认「TA」，服务端不返回对方学号。
+- 只同步课名、星期、节次、地点、周次；服务端再次清洗字段，教师、成绩、学号等一律丢弃。
+- 合看视图按时间段合并，同一时间双方都有课时左右 50% 分栏；双方快照都在 7 天内才计算共同空闲。
+- 首版不包含空教室推荐与双人桌面组件。
+
+### 验证
+- `node --check backend/server.js` 通过。
+- 本地后端端到端测试全部通过：设备注册/挑战/验签、生成配对码、绑定、双方状态、快照同步、隐私字段剥离、解绑、连续 5 次错误码触发限流。
+- 后端已上传 NAS 并用 `docker compose up -d --build` 重建，容器内 `grep -c 'pair/code'` 返回 1。
+- `flutter analyze` 无 issue；x86_64 APK 4147 已安装到 `Pixel_7_API36`，入口与配对页排版正常；游客态提示先登录。
+- 当前只有单个账号可用于真机/模拟器，完整双账号 UI 配对流程待有第二账号时回归。
+
+### 部署
+- 后端：`/vol1/1000/docker/haipan-api`，容器 `haipan-api` 已重建并运行。
+- 官网注意事项表述更新：GitHub `5793674`、Gitee `65fdf0d`。
+- 客户端 4147 仅安装到模拟器，未发布 Release。
+
 ## 2026-11-27 · Batch89：修复日志设置重复并发布 1.0.1+4146
 
 ### 范围

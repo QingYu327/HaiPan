@@ -1,91 +1,134 @@
+<div align="center">
+
 # 海畔 · 课表 APP
 
-广东海洋大学教务客户端「海畔」的整体工程：Flutter 客户端 + 自托管 Node 后端（NAS + Docker）+ 三页静态官网 + 开发文档与抓包材料。
+课表与学业信息管理客户端 · Flutter + 原生 Android 能力
 
-> 学习交流用途的非官方项目，与学校官方无关，请以教务系统官方数据为准。
+![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-3DDC84?logo=android&logoColor=white)
+![Flutter](https://img.shields.io/badge/Flutter-Dart%203-02569B?logo=flutter&logoColor=white)
+![State](https://img.shields.io/badge/State-Riverpod-6B4FBB)
+![Cache](https://img.shields.io/badge/Cache-Offline%20First-35678F)
+![Auth](https://img.shields.io/badge/Auth-Device%20Key-2F6F5E)
 
-- 当前版本：`1.0.1+4146`（正式线固定 `1.0.1`，只递增构建号）
-- 技术文档：[docs/PROJECT.md](docs/PROJECT.md)（现状）、[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（架构）、[docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md)（经验）
-- 官网：[site/index.html](site/index.html)，线上仓库 [QingYu327/haipan-website](https://github.com/QingYu327/haipan-website)（Netlify 自动部署）
+</div>
 
-## 1. 目录总览
+> 非官方客户端。数据来自本人账号在教务系统中可见的信息，仅用于个人课表与学业管理。
 
-```
-haipan app/
-├─ README.md                  本文件：定位、入口、目录、约定
-├─ jw_app/                    Flutter 客户端主工程
-│  ├─ INDEX.md                工程入口、构建、签名、发布说明
-│  ├─ README.md               客户端功能与技术栈
-│  ├─ lib/ android/ assets/
-│  ├─ tool/check_version.ps1  发布前 pubspec / tag 一致性检查
-│  └─ RELEASE_NOTES.md        v1.0.0 历史发布说明
-├─ backend/                   云端后端（Node + Docker，部署在 NAS）
-│  └─ INDEX.md                server.js / Docker / NAS 部署
-├─ site/                      官网源文件（首页 + 文档 + 注意事项）
-│  ├─ index.html
-│  ├─ docs.html
-│  ├─ notes.html
-│  └─ assets/                 pages.css / pages.js / app-icon.png
-├─ docs/                      开发知识库
-│  ├─ INDEX.md                文档总索引
-│  ├─ PROJECT.md              当前代码现状说明书
-│  ├─ PROJECT_SUMMARY.md      项目总结（开工必读）
-│  ├─ ARCHITECTURE.md         技术架构与部署
-│  ├─ LESSONS_LEARNED.md      经验教训
-│  ├─ modification_log.md     历次改动记录（Batch 制）
-│  └─ api-handoff/            接口移交与校准（权威契约 api_docs.json）
-├─ design/                    设计素材
-└─ LICENSE
-```
+## 目录
 
-## 2. 一键上手
+- [项目概览](#项目概览)
+- [技术栈](#技术栈)
+- [功能与技术实现](#功能与技术实现)
+- [架构](#架构)
+- [数据与隐私](#数据与隐私)
+- [兼容性](#兼容性)
 
-```powershell
-# 客户端（jw_app/）
-cd jw_app
-flutter pub get
-flutter analyze
-.\tool\check_version.ps1
-flutter build apk --release --target-platform android-arm64 --build-number=4144
+## 项目概览
 
-# 云端后端（backend/，在 NAS 的 compose 目录执行）
-docker compose up -d --build
-```
+- 客户端使用 Flutter 构建，页面、业务状态与网络层分离，状态由 Riverpod 统一管理。
+- 教务数据首次拉取后写入本地缓存，页面优先读取缓存，再在后台刷新。
+- 除情侣课表快照外，云端不保存课表、成绩等业务数据，只负责设备认证、准入与链路中转。
+- 敏感凭据经 Android Keystore 加密后落盘；日志在写入前对学号等字段脱敏。
 
-> 后端代码构建进镜像：改了 `server.js` 必须 `--build`，`docker restart` 不会生效。
-> 版本号与构建号以安装包为准，Dart 侧不再手写 `appVersion` / `appBuild`；详见 [docs/PROJECT.md](docs/PROJECT.md) §6。
+## 技术栈
 
-## 3. 功能与形态
+| 层级 | 选型 | 用途 |
+|---|---|---|
+| 客户端框架 | Flutter / Dart 3 | 跨分辨率页面与统一设计令牌 |
+| 状态管理 | Riverpod | 会话、数据、设置等全局状态 |
+| 网络层 | Dio + Cookie 会话 | 教务接口请求、重试与校外通道切换 |
+| 本地存储 | SharedPreferences + 文件系统 | 结构化缓存、日志与反馈附件 |
+| 原生能力 | Kotlin 方法通道 | Keystore、本地提醒、桌面组件、FileProvider |
+| 云端服务 | Node.js 20 单进程 HTTP 服务 | 设备公钥认证、准入名单、隧道中转与配对 |
 
-| 维度 | 内容 |
+## 功能与技术实现
+
+### 课表
+
+| 能力 | 实现 |
 |---|---|
-| 客户端 | 课表 / 成绩 / 考试 / 学业 / 绩点排名 / 空教室 / 选课抢课 / 提醒与桌面组件 / 检查更新 / 意见反馈 / 设置与日志 |
-| 登录 | 原生统一身份认证表单（学号 + 密码 + 验证码 / 多因子）；WebView 认证页兜底；校外经自建隧道 |
-| 后端 | 设备认证与令牌、APP 准入白名单、更新黑名单、使用统计、隧道入口下发、WebSocket 隧道 |
-| 技术栈 | Flutter / Dart、Riverpod、Dio + PersistCookieJar、Android Keystore、webview_flutter；Node + Docker |
-| 官网 | 首页、使用文档、注意事项三页；静态部署，无构建步骤 |
+| 周视图与切周 | 以学期开学日推算当前周，横向分页按周切换，顶部周次与学期选择器同步 |
+| 课程渲染 | 解析教务课表返回的课程列表，归一化为「课程名 / 教师 / 教室 / 节次 / 周次」模型 |
+| 实践课 | 单独列表展示，不映射到固定节次网格 |
+| 高亮 | 当前周与今日按本地时间计算，开学日可在设置中校准 |
+| 离线 | 序列化后写入 `cache_` 前缀键，会话过期或断网时回落缓存 |
 
-## 4. 版本与发布
+### 成绩
 
-- Release 标签格式：`v1.0.1+<构建号>`，例如 `v1.0.1+4146`
-- APK 资产名固定为 `haipan-app-release.apk`，官网下载直链依赖该名称
-- 发布前运行 `jw_app/tool/check_version.ps1 -Tag v1.0.1+<构建号>`，确保 pubspec、tag 一致
-- Release 需要标记为 latest；客户端更新页读取 GitHub `releases/latest`
-- 应用内版本来自安装包 `versionName` / `versionCode`，不再依赖源码常量
+- 按学期分组，支持学期切换与自动回退到最近有数据的学期。
+- 总览计算学分绩点、加权平均分、已获学分与通过情况。
+- 单科展开显示平时、期末、总评等成绩构成；本地换算的绩点标注「估算」。
 
-## 5. 官网
+### 考试
 
-`site/` 是官网源文件，推送后在 Netlify 自动构建：
+- 按考试时间排序，计算剩余天数，展示起止时间、考场与座位号。
+- 使用系统闹钟本地排程考试提醒，可单独设置提前时间。
+- 通知携带考试标识，点击直达对应考试详情。
 
-- 首页：功能、网络、手册入口、下载、免责声明
-- 使用文档：安装更新、登录、课表、成绩、考试、空教室、提醒、常见问题
-- 注意事项：非官方声明、账号与设备、隐私、公网通道、使用边界、下载安全
+### 学业与排名
 
-同步仓库：GitHub `QingYu327/haipan-website`、Gitee `heaven-does-not-move/haipan-website`。
+- 修读计划按课程类别分组，区分已修、在读与未修。
+- 汇总学分进度与通识拓展学分，最低学分要求可本地调整。
+- 排名查询支持学年学期区间、成绩性质与统计范围参数。
 
-## 6. 约定
+### 空教室
 
-- 包名 `cn.gdou.xiuhong`，应用名「海畔」
-- 签名密钥 `jw_app/android/upload-keystore.jks` 与 `jw_app/android/key.properties` 均不入库，需单独备份；换签名会导致老用户无法覆盖安装
-- 详细工程纪律与踩坑见 [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)
-- 历史改动记录中的路径保持当时原样，不随后续目录整理改写
+- 按校区、楼栋与教室类别筛选，周次、星期、节次支持多选。
+- 多时段查询结果为空时拆分为单时段请求并合并结果。
+- 收藏列表本地持久化，支持单独查看某间教室的使用情况。
+
+### 情侣课表
+
+- 6 位配对码建立一对一绑定，10 分钟有效，任一方解除即整体失效。
+- 服务端只保留字段白名单 `n` / `w` / `s` / `e` / `r` / `k`，不下发对方学号。
+- 客户端提供「我 / TA / 合看」三种视图，合看时按时间片合并、同一时段左右分栏。
+- 双方快照均在 7 天内时计算当天共同空闲。
+
+### 提醒与桌面组件
+
+- 上课提醒与考试提醒分别配置，基于本地课表排程，断网也能触发。
+- 提供「今日课表」与「课表 + 考试」两种 AppWidget，使用 Kotlin RemoteViews 渲染。
+- 组件跟随系统明暗模式，桌面空间不足时按优先级补充下一门课或下一场考试。
+
+### 登录与校外访问
+
+- 原生表单直连统一身份认证：先取登录页参数，RSA 加密密码，必要时填写验证码。
+- 支持短信与企业微信多因子验证；首次登录设备可触发验证码校验。
+- 校内直连教务；校外通过自托管 WebSocket 多路复用隧道访问。
+- 设备使用 ECDSA 挑战应答换取 30 分钟会话令牌，单设备绑定。
+
+### 更新、日志与主题
+
+- 更新检查读取 Releases 最新版本，比较版本号与构建号后引导下载安装。
+- 日志分级记录，学号等字段脱敏，支持调整详细级别、保留天数、清空与导出。
+- 使用统一设计令牌，支持明暗模式、字体大小与背景风格切换。
+
+## 架构
+
+```text
+┌──────────────── Flutter 客户端 ────────────────┐
+│  UI 层        页面 / 组件 / 设计令牌            │
+│  状态层       Riverpod：会话、数据、设置        │
+│  网络层       Dio + Cookie、隧道切换、重试      │
+│  本地层       SharedPreferences / 文件系统      │
+│  原生层       Kotlin：Keystore、提醒、组件      │
+└───────────────────────┬────────────────────────┘
+                        │ HTTPS / WebSocket
+              ┌─────────▼──────────┐
+              │   Node.js 云端服务  │
+              │  设备认证 · 准入    │
+              │  隧道中转 · 配对    │
+              └────────────────────┘
+```
+
+## 数据与隐私
+
+- 账号密码只在登录流程内使用；需要持久化的凭据由 Keystore 加密。
+- 运行日志默认保存在本机，写盘与导出前对学号等字段脱敏。
+- 情侣课表只同步字段白名单，云端不返回对方学号。
+- 课表、成绩、考试、学业等缓存可按模块单独清除。
+
+## 兼容性
+
+- Android 8.0 及以上，arm64 设备，APK 覆盖安装可保留缓存与登录态。
+- 通知与精确闹钟仅用于本地提醒，可在系统设置中关闭。

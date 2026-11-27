@@ -8,6 +8,7 @@ import '../../theme/ink_page_transition.dart';
 import '../../theme/ink_tokens.dart';
 import '../../util/app_log.dart';
 import '../login/login_page.dart';
+import '../couple/couple_page.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/ink_dialog.dart';
 import '../widgets/ink_page.dart';
@@ -50,6 +51,12 @@ class ProfilePage extends ConsumerWidget {
         AppIcons.room,
         '空教室查询',
         () => _push(context, const FavoriteRoomsPage()),
+      ),
+      _Entry(
+        AppIcons.groups,
+        '情侣课表',
+        () => _push(context, const CouplePage()),
+        badge: 'Beta',
       ),
       _Entry(
         AppIcons.chartBar,
@@ -124,6 +131,23 @@ class ProfilePage extends ConsumerWidget {
                     iconTone: InkTone.info,
                     onTap: entries[i].onTap,
                     showDivider: i < entries.length - 1,
+                    trailing: entries[i].badge == null
+                        ? null
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkTag(
+                                text: entries[i].badge!,
+                                tone: InkTone.warning,
+                              ),
+                              const SizedBox(width: InkSpacing.xs),
+                              Icon(
+                                AppIcons.chevronRight,
+                                size: 20,
+                                color: context.ink.secondaryLabel,
+                              ),
+                            ],
+                          ),
                   ),
               ],
             ),
@@ -300,9 +324,10 @@ class _ProfileHeader extends StatelessWidget {
 }
 
 class _Entry {
-  const _Entry(this.icon, this.label, this.onTap);
+  const _Entry(this.icon, this.label, this.onTap, {this.badge});
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final String? badge;
 }
